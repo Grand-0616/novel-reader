@@ -1,0 +1,16 @@
+﻿# 统一换行：仓库内一律 LF，避免 Windows 的 CRLF 破坏 shell 脚本
+* text=auto eol=lf
+
+# 二进制文件
+*.png binary
+*.epub binary
+*.ipa binary
+
+# 这些必须是 LF，否则 GitHub Actions 解析或执行会出问题
+*.yml text eol=lf
+*.yaml text eol=lf
+*.sh text eol=lf
+*.swift text eol=lf
+*.pbxproj text eol=lf
+*.xcscheme text eol=lf
+*.plist text eol=lf

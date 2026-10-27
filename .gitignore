@@ -1,0 +1,17 @@
+﻿# macOS
+.DS_Store
+
+# Xcode
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+*.xcarchive
+
+# 工具产物
+tools/.e2e-sandbox/
+
+# 签名文件绝不入库
+*.p12
+*.mobileprovision
+ExportOptions.plist

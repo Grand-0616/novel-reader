@@ -1,0 +1,619 @@
+//
+//  ReaderView.swift
+//  NovelReader
+//
+//  阅读器：分页显示、点击左右翻页、滑动翻页、进度保存、章节跳转、设置面板
+//
+
+import SwiftUI
+import SwiftData
+
+// MARK: - 阅读器布局度量
+//
+// 分页时用的尺寸和实际绘制区域必须是同一个，否则会出现
+// "页底空一截"或"最后一行被裁掉"。所有边距/安全区计算集中在这里。
+struct ReaderLayout: Equatable {
+    /// 整个可用区域（含安全区）
+    let size: CGSize
+    let insets: EdgeInsets
+    /// 左右页边距（百分比 * 宽度）
+    let marginH: CGFloat
+    /// 上下页边距（百分比 * 高度）
+    let marginV: CGFloat
+
+    /// 页码行高度
+    static let footerHeight: CGFloat = 22
+
+    init(size: CGSize, insets: EdgeInsets, marginH ratioH: Double, marginV ratioV: Double) {
+        self.size = size
+        self.insets = insets
+        self.marginH = size.width * CGFloat(ratioH)
+        self.marginV = size.height * CGFloat(ratioV)
+    }
+
+    /// 顶部起排位置：安全区 + 上下边距
+    var topInset: CGFloat { max(insets.top, 20) + marginV }
+    /// 底部收排位置：安全区 + 上下边距 + 页码行
+    var bottomInset: CGFloat { max(insets.bottom, 16) + marginV + Self.footerHeight }
+
+    /// 正文可排版区域
+    var textSize: CGSize {
+        CGSize(
+            width: max(size.width - marginH * 2, 80),
+            height: max(size.height - topInset - bottomInset, 80)
+        )
+    }
+
+    var textOrigin: CGPoint {
+        CGPoint(x: marginH, y: topInset)
+    }
+}
+
+struct ReaderView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var appState
+    @Environment(\.colorScheme) private var systemScheme
+
+    let book: Book
+
+    @State private var chapterIndex: Int = 0
+    @State private var pages: [NSRange] = []
+    @State private var pageIndex: Int = 0
+    @State private var chapterText: String = ""
+    @State private var pendingOffset: Int = 0
+    @State private var showChrome = false
+    @State private var showSettings = false
+    @State private var showChapterList = false
+    @State private var paginationSize: CGSize = .zero
+    /// 当前生效的布局度量，供边距变化时重算尺寸
+    @State private var currentLayout: ReaderLayout?
+    @State private var isLoading = true
+    @State private var loadError: String?
+    @State private var dragOffset: CGFloat = 0
+
+    @Environment(\.modelContext) private var modelContext
+    @Environment(SourceRegistry.self) private var registry
+
+    /// 优先用 AppState 里的 Store，没有就现场建一个（避免强制解包崩溃）
+    private var store: Store {
+        appState.store ?? Store(context: modelContext)
+    }
+
+    private var theme: ReaderTheme { appState.theme }
+
+    private var chapters: [Chapter] {
+        book.chapters.sorted { $0.index < $1.index }
+    }
+
+    private var currentChapter: Chapter? {
+        chapters.first { $0.index == chapterIndex }
+    }
+
+    private var font: UIFont {
+        UIFont.systemFont(ofSize: appState.fontSize, weight: .regular)
+    }
+
+    private var needsReload: Bool { pages.isEmpty }
+
+    var body: some View {
+        GeometryReader { geo in
+            let layout = ReaderLayout(size: geo.size,
+                                      insets: geo.safeAreaInsets,
+                                      marginH: appState.marginHorizontal,
+                                      marginV: appState.marginVertical)
+
+            ZStack(alignment: .topLeading) {
+                theme.backgroundColor.ignoresSafeArea()
+
+                // 正文：尺寸与分页时使用的尺寸完全一致，避免裁字或页底留白
+                content(textSize: layout.textSize)
+                    .frame(width: layout.textSize.width,
+                           height: layout.textSize.height,
+                           alignment: .topLeading)
+                    .offset(x: layout.textOrigin.x, y: layout.textOrigin.y)
+
+                footer(layout: layout)
+            }
+            .contentShape(Rectangle())
+            .onTapGesture { location in
+                handleTap(location: location, size: geo.size)
+            }
+            .gesture(swipeGesture(width: geo.size.width))
+            .onAppear {
+                applyLayout(layout)
+                loadInitial()
+            }
+            .onChange(of: layout) { _, newLayout in
+                // 旋转 / 分屏 / 安全区变化：重排并回到原来的字符位置
+                applyLayout(newLayout)
+                repaginate(keepingOffset: currentOffsetInPage)
+            }
+        }
+        .statusBarHidden(!showChrome)
+        .persistentSystemOverlays(showChrome ? .automatic : .hidden)
+        .overlay(alignment: .top) { if showChrome { topBar } }
+        .overlay(alignment: .bottom) { if showChrome { bottomBar } }
+        .sheet(isPresented: $showSettings) {
+            ReaderSettingsPanel()
+        }
+        .sheet(isPresented: $showChapterList) {
+            ChapterListView(book: book) { idx in
+                showChapterList = false
+                goToChapter(idx, offset: 0)
+            }
+        }
+        .onDisappear {
+            saveProgress()
+        }
+        // 排版参数变化后必须重排：字号/行距/边距都会改变每页容量。
+        // 用当前页的起始字符偏移作为锚点，重排后仍停在原来的位置。
+        .onChange(of: appState.fontSize) { _, _ in
+            repaginate(keepingOffset: currentOffsetInPage)
+        }
+        .onChange(of: appState.lineSpacing) { _, _ in
+            repaginate(keepingOffset: currentOffsetInPage)
+        }
+        .onChange(of: appState.marginHorizontal) { _, _ in
+            // 边距变化会改变可用宽度，需要先更新 paginationSize 再重排
+            repaginateAfterLayoutChange()
+        }
+        .onChange(of: appState.marginVertical) { _, _ in
+            repaginateAfterLayoutChange()
+        }
+    }
+
+    /// 边距类改动会同时影响可用尺寸，需要重新取一次布局度量
+    private func repaginateAfterLayoutChange() {
+        guard let layout = currentLayout else { return }
+        paginationSize = layout.textSize
+        repaginate(keepingOffset: currentOffsetInPage)
+    }
+
+    private func applyLayout(_ layout: ReaderLayout) {
+        currentLayout = layout
+        if layout.textSize != paginationSize {
+            paginationSize = layout.textSize
+        }
+    }
+
+    // MARK: - 正文
+
+    @ViewBuilder
+    private func content(textSize: CGSize) -> some View {
+        if isLoading {
+            ProgressView()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if let loadError {
+            VStack(spacing: 12) {
+                Image(systemName: "exclamationmark.triangle")
+                    .font(.largeTitle)
+                    .foregroundStyle(.secondary)
+                Text(loadError)
+                    .font(.footnote)
+                    .foregroundStyle(theme.secondaryTextColor)
+                    .multilineTextAlignment(.center)
+                Button("重试") { loadChapter(chapterIndex: chapterIndex, offset: pendingOffset) }
+                    .buttonStyle(.bordered)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if pageIndex < pages.count {
+            let attributed = Paginator.makeAttributedString(
+                text: chapterText, font: font,
+                lineSpacing: appState.lineSpacing, color: UIColor(theme.textColor))
+            CoreTextPage(attributed: attributed, range: pages[pageIndex])
+                .frame(width: textSize.width, height: textSize.height)
+                .offset(x: dragOffset)
+                .id("\(chapterIndex)-\(pageIndex)-\(appState.fontSize)-\(appState.lineSpacing)-\(Int(textSize.width))x\(Int(textSize.height))")
+        } else {
+            Color.clear
+        }
+    }
+
+    // MARK: - 页脚
+
+    private func footer(layout: ReaderLayout) -> some View {
+        VStack {
+            Spacer()
+            HStack {
+                Text(currentChapter?.title ?? "")
+                    .lineLimit(1)
+                Spacer()
+                Text("\(pageIndex + 1)/\(max(pages.count, 1))")
+                    .monospacedDigit()
+                Spacer()
+                Text("\(Int(book.readingProgress * 100))%")
+                    .monospacedDigit()
+            }
+            .font(.system(size: 11))
+            .foregroundStyle(theme.secondaryTextColor)
+            .padding(.horizontal, layout.marginH)
+            .padding(.bottom, max(layout.insets.bottom, 8) + 4)
+        }
+        .allowsHitTesting(false)
+    }
+
+    // MARK: - 顶栏
+
+    private var topBar: some View {
+        HStack {
+            Button {
+                saveProgress()
+                dismiss()
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.headline)
+            }
+            Spacer()
+            VStack(spacing: 2) {
+                Text(book.title).font(.subheadline.weight(.semibold)).lineLimit(1)
+                Text(currentChapter?.title ?? "").font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+            }
+            Spacer()
+            Menu {
+                Button { showChapterList = true } label: { Label("目录", systemImage: "list.bullet") }
+                Button { showSettings = true } label: { Label("排版", systemImage: "textformat.size") }
+                if let ch = currentChapter, !ch.isCached, ch.remoteURL != nil {
+                    Button {
+                        DownloadManager.shared.downloadAll(book: book, store: store)
+                    } label: { Label("下载整本", systemImage: "arrow.down.circle") }
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle").font(.headline)
+            }
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 10)
+        .background(.ultraThinMaterial)
+    }
+
+    // MARK: - 底栏
+
+    private var bottomBar: some View {
+        VStack(spacing: 8) {
+            // 整本书进度：拖动可快速跳到任意章节
+            HStack(spacing: 10) {
+                Text("\(chapterIndex + 1)").font(.caption2).foregroundStyle(.secondary).monospacedDigit()
+                Slider(value: Binding(
+                    get: { Double(chapterIndex) },
+                    set: { newValue in
+                        let target = Int(newValue.rounded())
+                        guard target != chapterIndex, target >= 0, target < chapters.count else { return }
+                        goToChapter(target, offset: 0)
+                    }
+                ), in: 0...Double(max(chapters.count - 1, 1)))
+                .tint(.accentColor)
+                Text("\(chapters.count)").font(.caption2).foregroundStyle(.secondary).monospacedDigit()
+            }
+
+            HStack {
+                Button {
+                    goToChapter(max(chapterIndex - 1, 0), offset: 0)
+                } label: {
+                    Label("上一章", systemImage: "chevron.up")
+                }
+                .disabled(chapterIndex <= 0)
+
+                Spacer()
+
+                Button { showChapterList = true } label: {
+                    Label("目录", systemImage: "list.bullet")
+                }
+
+                Spacer()
+
+                Button { showSettings = true } label: {
+                    Label("排版", systemImage: "textformat.size")
+                }
+
+                Spacer()
+
+                Button {
+                    goToChapter(min(chapterIndex + 1, max(chapters.count - 1, 0)), offset: 0)
+                } label: {
+                    Label("下一章", systemImage: "chevron.down")
+                }
+                .disabled(chapterIndex >= chapters.count - 1)
+            }
+            .font(.footnote)
+            .labelStyle(.titleAndIcon)
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 12)
+        .padding(.bottom, 8)
+        .background(.ultraThinMaterial)
+    }
+
+    // MARK: - 手势
+
+    private func handleTap(location: CGPoint, size: CGSize) {
+        let leftZone = size.width * 0.3
+        let rightZone = size.width * 0.7
+        let middleV = size.height * 0.15...size.height * 0.85
+
+        if showChrome {
+            showChrome = false
+            return
+        }
+        if location.y >= middleV.lowerBound, location.y <= middleV.upperBound {
+            if location.x < leftZone {
+                previousPage()
+                return
+            } else if location.x > rightZone {
+                nextPage()
+                return
+            }
+        }
+        withAnimation(.easeInOut(duration: 0.15)) { showChrome.toggle() }
+    }
+
+    private func swipeGesture(width: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 24)
+            .onChanged { value in
+                guard appState.pageTurnStyle == .slide else { return }
+                dragOffset = value.translation.width * 0.25
+            }
+            .onEnded { value in
+                let threshold: CGFloat = 50
+                let dx = value.translation.width
+                dragOffset = 0
+                if dx < -threshold {
+                    nextPage()
+                } else if dx > threshold {
+                    previousPage()
+                }
+            }
+    }
+
+    // MARK: - 翻页逻辑
+
+    private var currentOffsetInPage: Int {
+        guard pageIndex < pages.count else { return pendingOffset }
+        return pages[pageIndex].location
+    }
+
+    private func nextPage() {
+        if pageIndex + 1 < pages.count {
+            withAnimation(appState.pageTurnStyle == .none ? nil : .easeInOut(duration: 0.18)) {
+                pageIndex += 1
+            }
+            saveProgress()
+        } else if chapterIndex + 1 < chapters.count {
+            goToChapter(chapterIndex + 1, offset: 0)
+        }
+    }
+
+    private func previousPage() {
+        if pageIndex > 0 {
+            withAnimation(appState.pageTurnStyle == .none ? nil : .easeInOut(duration: 0.18)) {
+                pageIndex -= 1
+            }
+            saveProgress()
+        } else if chapterIndex > 0 {
+            // 跳到上一章最后一页
+            let prev = chapterIndex - 1
+            loadChapter(chapterIndex: prev, offset: Int.max, preferLastPage: true)
+        }
+    }
+
+    // MARK: - 章节加载
+
+    private func loadInitial() {
+        chapterIndex = min(max(book.positionChapterIndex, 0), max(chapters.count - 1, 0))
+        pendingOffset = book.positionCharOffset
+        loadChapter(chapterIndex: chapterIndex, offset: pendingOffset)
+    }
+
+    private func loadChapter(chapterIndex idx: Int, offset: Int, preferLastPage: Bool = false) {
+        guard idx >= 0, idx < chapters.count else { return }
+        chapterIndex = idx
+        isLoading = true
+        loadError = nil
+        let chapter = chapters[idx]
+        let bookRef = book
+        let storeRef: Store? = store
+
+        Task {
+            var text = ""
+            // 1. 本地缓存
+            if let url = chapter.cacheFileURL,
+               FileManager.default.fileExists(atPath: url.path) {
+                text = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+            }
+            // 2. 远程抓取
+            if text.isEmpty, let remote = chapter.remoteURL {
+                let source = SourceRegistry.shared.source(id: UUID(uuidString: bookRef.sourceID ?? ""))
+                do {
+                    if let src = source, src.kind == .rules || src.kind == .jsonAPI {
+                        text = try await WebBookSource.content(source: src, chapterURL: remote)
+                    } else {
+                        let resp = try await HTTPClient.shared.fetchText(remote, source: source)
+                        text = TextSanitizer.normalizeBody(HTMLParser.htmlToPlainText(resp.text))
+                    }
+                    if !text.isEmpty, let storeRef {
+                        try? await MainActor.run {
+                            try storeRef.writeChapterCache(book: bookRef, chapter: chapter, text: text)
+                        }
+                    }
+                } catch {
+                    await MainActor.run {
+                        self.loadError = "本章加载失败：\(error.localizedDescription)"
+                        self.isLoading = false
+                    }
+                    return
+                }
+            }
+
+            if text.isEmpty {
+                text = "（本章内容为空）"
+            }
+
+            await MainActor.run {
+                self.chapterText = text
+                self.repaginate(toOffset: preferLastPage ? Int.max : offset)
+                self.isLoading = false
+            }
+        }
+    }
+
+    // MARK: - 分页
+
+    private func repaginate(keepingOffset offset: Int? = nil) {
+        let target = offset ?? currentOffsetInPage
+        repaginate(toOffset: target)
+    }
+
+    private func repaginate(toOffset offset: Int) {
+        guard !chapterText.isEmpty, paginationSize.width > 0, paginationSize.height > 0 else {
+            pages = [NSRange(location: 0, length: (chapterText as NSString).length)]
+            pageIndex = 0
+            return
+        }
+
+        let newPages = Paginator.paginate(text: chapterText,
+                                          size: paginationSize,
+                                          font: font,
+                                          lineSpacing: appState.lineSpacing,
+                                          color: .black)
+        pages = newPages
+
+        if offset == Int.max {
+            pageIndex = max(newPages.count - 1, 0)
+        } else {
+            pageIndex = newPages.firstIndex { offset >= $0.location && offset < $0.location + $0.length } ?? 0
+        }
+    }
+
+    private func goToChapter(_ idx: Int, offset: Int) {
+        guard idx >= 0, idx < chapters.count else { return }
+        pendingOffset = offset
+        pages = []
+        pageIndex = 0
+        loadChapter(chapterIndex: idx, offset: offset)
+    }
+
+    // MARK: - 进度保存
+
+    private func saveProgress() {
+        let s = store
+        let offset = currentOffsetInPage
+        s.saveProgress(book: book, chapterIndex: chapterIndex, charOffset: offset)
+        // 预取后续章节
+        if let current = currentChapter {
+            let next = chapters.filter { $0.index > current.index }
+            DownloadManager.shared.prefetch(book: book, fromChapters: Array(next.prefix(3)), store: s)
+        }
+    }
+}
+
+// MARK: - 设置面板
+
+struct ReaderSettingsPanel: View {
+    @Environment(AppState.self) private var appState
+    @Environment(\.dismiss) private var dismiss
+
+    /// true = 作为 sheet 弹出（自带导航栏与"完成"按钮）
+    /// false = 嵌在其它导航栈里（如"我的 → 排版设置"），不再套一层 NavigationStack
+    var asSheet: Bool = true
+
+    var body: some View {
+        if asSheet {
+            NavigationStack {
+                form
+                    .navigationTitle("排版设置")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("完成") { dismiss() }
+                        }
+                    }
+            }
+            .presentationDetents([.medium, .large])
+        } else {
+            form
+                .navigationTitle("排版设置")
+                .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+
+    @ViewBuilder
+    private var form: some View {
+        @Bindable var appState = appState
+
+        Form {
+            Section("主题") {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 12) {
+                        ForEach(ReaderTheme.allCases) { t in
+                            Button {
+                                appState.theme = t
+                            } label: {
+                                VStack(spacing: 6) {
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .fill(t.backgroundColor)
+                                        .frame(width: 56, height: 56)
+                                        .overlay {
+                                            RoundedRectangle(cornerRadius: 8)
+                                                .strokeBorder(appState.theme == t ? Color.accentColor : Color.secondary.opacity(0.25),
+                                                              lineWidth: appState.theme == t ? 2 : 1)
+                                            Text("Aa")
+                                                .font(.system(size: 17, weight: .medium, design: .serif))
+                                                .foregroundStyle(t.textColor)
+                                        }
+                                    Text(t.displayName)
+                                        .font(.caption2)
+                                        .foregroundStyle(appState.theme == t ? Color.accentColor : .secondary)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+
+            Section("字号 \(Int(appState.fontSize))") {
+                Slider(value: $appState.fontSize, in: 12...32, step: 1)
+                HStack {
+                    Button("A-") { appState.fontSize = max(12, appState.fontSize - 1) }
+                    Spacer()
+                    Button("A+") { appState.fontSize = min(32, appState.fontSize + 1) }
+                }
+                .font(.headline)
+            }
+
+            Section("行距 \(String(format: "%.0f", appState.lineSpacing))") {
+                Slider(value: $appState.lineSpacing, in: 0...20, step: 1)
+            }
+
+            Section("段距 \(String(format: "%.0f", appState.paragraphSpacing))") {
+                Slider(value: $appState.paragraphSpacing, in: 0...24, step: 2)
+            }
+
+            Section("页边距") {
+                VStack(alignment: .leading) {
+                    Text("左右 \(Int(appState.marginHorizontal * 100))%").font(.caption).foregroundStyle(.secondary)
+                    Slider(value: $appState.marginHorizontal, in: 0.02...0.15, step: 0.005)
+                }
+                VStack(alignment: .leading) {
+                    Text("上下 \(Int(appState.marginVertical * 100))%").font(.caption).foregroundStyle(.secondary)
+                    Slider(value: $appState.marginVertical, in: 0.01...0.10, step: 0.005)
+                }
+            }
+
+            Section("翻页动画") {
+                Picker("翻页", selection: $appState.pageTurnStyle) {
+                    ForEach(PageTurnStyle.allCases) { s in
+                        Text(s.displayName).tag(s)
+                    }
+                }
+                .pickerStyle(.segmented)
+            }
+
+            Section {
+                Button("恢复默认排版") {
+                    appState.resetReaderDefaults()
+                }
+            }
+        }
+    }
+}
