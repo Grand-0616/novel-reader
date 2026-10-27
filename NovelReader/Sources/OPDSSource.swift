@@ -262,6 +262,7 @@ enum OPDSSource {
         request.setValue("application/xml; charset=utf-8", forHTTPHeaderField: "Content-Type")
         request.setValue("text/xml,application/xml", forHTTPHeaderField: "Accept")
         request.setValue(source.userAgent, forHTTPHeaderField: "User-Agent")
+        request.timeoutInterval = 25
         request.httpBody = Data("""
         <?xml version="1.0" encoding="utf-8"?>
         <D:propfind xmlns:D="DAV:">
@@ -270,7 +271,6 @@ enum OPDSSource {
             <D:getcontentlength/>
             <D:getcontenttype/>
             <D:resourcetype/>
-            <D:getlastmodified/>
           </D:prop>
         </D:propfind>
         """.utf8)
@@ -282,13 +282,18 @@ enum OPDSSource {
         for (k, v) in source.headers { request.setValue(v, forHTTPHeaderField: k) }
 
         let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw HTTPError.badStatus((response as? HTTPURLResponse)?.statusCode ?? 0)
+        guard let http = response as? HTTPURLResponse else {
+            throw HTTPError.transport("无 HTTP 响应")
+        }
+        // 207 Multi-Status 是 WebDAV 的正常返回
+        guard (200..<300).contains(http.statusCode) else {
+            throw HTTPError.badStatus(http.statusCode)
         }
         let xml = TextSanitizer.decode(data: data)?.text ?? ""
 
         var entries: [SourceEntry] = []
-        let selfPath = target.path
+        // 用规范化后的路径做自身比较，避免/尾斜杠差异
+        let selfPath = target.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
 
         if let re = try? NSRegularExpression(pattern: #"<[dD]:response\b[\s\S]*?</[dD]:response>"#) {
             let ns = xml as NSString
@@ -297,21 +302,44 @@ enum OPDSSource {
                 let block = ns.substring(with: m.range)
                 guard let hrefRaw = HTMLParser.firstMatch(#"<[dD]:href[^>]*>([\s\S]*?)</[dD]:href>"#, in: block) else { return }
                 let href = hrefRaw.trimmingCharacters(in: .whitespacesAndNewlines)
+                    .replacingOccurrences(of: "&amp;", with: "&")
                 let decoded = href.removingPercentEncoding ?? href
-                guard let itemURL = URL(string: decoded, relativeTo: target)?.absoluteURL else { return }
+
+                // WebDAV 的 href 可能是：
+                //   绝对路径  /webdav/books/a.txt
+                //   完整 URL  http://nas:5005/books/a.txt
+                //   相对路径  books/a.txt
+                let itemURL: URL?
+                if decoded.lowercased().hasPrefix("http") {
+                    itemURL = URL(string: decoded)
+                } else if decoded.hasPrefix("/") {
+                    // 绝对路径：拼到 host 上，忽略 baseURL 的 path
+                    var comps = URLComponents(url: target, resolvingAgainstBaseURL: false)
+                    comps?.path = decoded
+                    comps?.query = nil
+                    itemURL = comps?.url
+                } else {
+                    itemURL = URL(string: decoded, relativeTo: target)?.absoluteURL
+                }
+                guard let itemURL else { return }
 
                 // 跳过自身
-                if itemURL.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")) ==
-                    selfPath.trimmingCharacters(in: CharacterSet(charactersIn: "/")) { return }
+                let itemPath = itemURL.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+                if itemPath == selfPath { return }
+                // 跳过上上级（某些服务器会返回）
+                if itemPath.isEmpty { return }
 
                 let isCollection = block.range(of: "collection", options: .caseInsensitive) != nil
                 let name = HTMLParser.firstMatch(#"<[dD]:displayname[^>]*>([\s\S]*?)</[dD]:displayname>"#, in: block)?
-                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? itemURL.lastPathComponent
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    ?? itemURL.lastPathComponent
                 guard !name.isEmpty else { return }
 
                 if isCollection {
+                    var href = itemURL.absoluteString
+                    if !href.hasSuffix("/") { href += "/" }
                     entries.append(SourceEntry(title: name, author: nil, summary: nil, coverURL: nil,
-                                               href: itemURL.absoluteString, kind: .directory,
+                                               href: href, kind: .directory,
                                                mimeType: "text/directory"))
                 } else {
                     let ext = itemURL.pathExtension.lowercased()

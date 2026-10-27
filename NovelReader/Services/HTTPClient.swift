@@ -187,18 +187,59 @@ final class HTTPClient {
     // MARK: - URL 工具
 
     /// 把相对地址解析成绝对地址
+    ///
+    /// 注意几个容易 404 的坑：
+    ///   1. 已经是完整 URL 时不能再做百分号编码 —— 重新编码会把 `%2F` 变成 `%252F`，
+    ///      也会把一些服务器的签名参数改坏。
+    ///   2. 以 `/` 开头的绝对路径必须建立在 base 的 scheme+host+port 上，
+    ///      完全忽略 base 的 path，否则会被拼成 /webdav/webdav/xxx。
+    ///   3. baseURL 通常没有尾斜杠（normalizeBase 会去掉），
+    ///      此时 `URL(string:relativeTo:)` 会把最后一段当文件名替换掉，
+    ///      所以这里手工补一个尾斜杠再解析。
     static func resolve(_ href: String, base: String?) -> URL? {
         let trimmed = href.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty { return nil }
-        if trimmed.lowercased().hasPrefix("http://") || trimmed.lowercased().hasPrefix("https://") {
-            return URL(string: trimmed.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? trimmed)
+
+        let lower = trimmed.lowercased()
+
+        // 1. 完整 URL：直接用，不做任何编码改写
+        if lower.hasPrefix("http://") || lower.hasPrefix("https://") {
+            if let u = URL(string: trimmed) { return u }
+            // 含未转义字符（空格、中文）时才退回编码
+            if let encoded = trimmed.addingPercentEncoding(withAllowedCharacters: .urlFragmentAllowed),
+               let u = URL(string: encoded) {
+                return u
+            }
+            return nil
         }
-        if trimmed.lowercased().hasPrefix("//") {
+
+        // 2. 协议相对 //host/path
+        if lower.hasPrefix("//") {
             let scheme = base?.lowercased().hasPrefix("https") == true ? "https:" : "http:"
             return URL(string: scheme + trimmed)
         }
+
         guard let base, let baseURL = URL(string: base) else { return nil }
-        return URL(string: trimmed, relativeTo: baseURL)?.absoluteURL
+
+        // 3. 绝对路径：只借用 base 的 origin
+        if trimmed.hasPrefix("/") {
+            guard var comps = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
+                return URL(string: trimmed, relativeTo: baseURL)?.absoluteURL
+            }
+            comps.path = ""
+            comps.query = nil
+            comps.fragment = nil
+            guard let origin = comps.url else { return nil }
+            return URL(string: trimmed, relativeTo: origin)?.absoluteURL
+        }
+
+        // 4. 相对路径：给 base 补尾斜杠，避免最后一段被替换
+        var baseString = base
+        if !baseString.hasSuffix("/") {
+            baseString += "/"
+        }
+        guard let safeBase = URL(string: baseString) else { return nil }
+        return URL(string: trimmed, relativeTo: safeBase)?.absoluteURL
     }
 
     /// 规范化来源 baseURL（补 scheme、去尾斜杠）

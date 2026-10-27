@@ -131,7 +131,10 @@ struct LibraryView: View {
                 }
             }
             .animation(.easeInOut(duration: 0.2), value: importMessage)
-            .alert("出错了", isPresented: .constant(errorMessage != nil)) {
+            .alert("出错了", isPresented: Binding(
+                get: { errorMessage != nil },
+                set: { if !$0 { errorMessage = nil } }
+            )) {
                 Button("好") { errorMessage = nil }
             } message: {
                 Text(errorMessage ?? "")
@@ -232,10 +235,22 @@ struct LibraryView: View {
     private func handleImport(_ result: Result<[URL], Error>) {
         switch result {
         case .success(let urls):
-            guard !urls.isEmpty, let store = appState.store else { return }
+            guard !urls.isEmpty else {
+                errorMessage = "没有选择文件"
+                return
+            }
+            // 不再依赖 appState.store —— 它可能是 nil（onAppear 未触发），
+            // 那样会静默 return，用户看到的只是"没反应"。
+            // 这里直接用 modelContext 兜底创建 Store。
+            let store = appState.store ?? Store(context: modelContext)
+            appState.store = store
+
             Task {
                 isImporting = true
+                importMessage = "准备导入 \(urls.count) 个文件"
                 var count = 0
+                var errors: [String] = []
+
                 for url in urls {
                     do {
                         _ = try await ImportService.shared.importLocalFile(at: url, store: store) { p in
@@ -245,10 +260,14 @@ struct LibraryView: View {
                         }
                         count += 1
                     } catch {
-                        errorMessage = "\(url.lastPathComponent)：\(error.localizedDescription)"
+                        errors.append("\(url.lastPathComponent)：\(error.localizedDescription)")
                     }
                 }
+
                 isImporting = false
+                if !errors.isEmpty {
+                    errorMessage = errors.joined(separator: "\n\n")
+                }
                 if count > 0 {
                     importMessage = "已导入 \(count) 本"
                     try? await Task.sleep(nanoseconds: 1_800_000_000)
@@ -256,7 +275,7 @@ struct LibraryView: View {
                 importMessage = nil
             }
         case .failure(let error):
-            errorMessage = error.localizedDescription
+            errorMessage = "选择文件失败：\(error.localizedDescription)"
         }
     }
 
@@ -429,7 +448,10 @@ struct URLImportSheet: View {
                         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
                 }
             }
-            .alert("导入失败", isPresented: .constant(errorMessage != nil)) {
+            .alert("导入失败", isPresented: Binding(
+                get: { errorMessage != nil },
+                set: { if !$0 { errorMessage = nil } }
+            )) {
                 Button("好") { errorMessage = nil }
             } message: {
                 Text(errorMessage ?? "")

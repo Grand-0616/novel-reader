@@ -20,6 +20,8 @@ const suites = [
   ['核心算法（分章/编码/HTML/EPUB/OPDS）', 'verify-core.mjs'],
   ['分页算法（字符守恒/断点/极端输入）', 'verify-pagination.mjs'],
   ['端到端导入（文件→解析→缓存→读回）', 'verify-e2e.mjs'],
+  ['本地导入链路（扩展名/作用域/兜底/刷新）', 'verify-import.mjs'],
+  ['WebDAV 与 URL 解析（404 回归）', 'verify-webdav.mjs'],
 ];
 
 let failedSuites = 0;
