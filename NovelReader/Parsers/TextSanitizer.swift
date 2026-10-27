@@ -171,8 +171,7 @@ public enum TextSanitizer {
 
     /// 严格校验 UTF-8 合法性（String(data:encoding:.utf8) 有时会做替换）
     public static func isValidUTF8(_ data: Data) -> Bool {
-        var iterator = data.makeIterator()
-        var buf: [UInt8] = Array(iterator)
+        let buf = [UInt8](data)
         var i = 0
         let n = buf.count
         while i < n {

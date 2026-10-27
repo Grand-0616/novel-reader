@@ -154,8 +154,9 @@ enum HTMLParser {
 
     /// 粗粒度取 <title>
     static func pageTitle(_ html: String) -> String? {
-        firstMatch(#"<title[^>]*>([\s\S]*?)</title>"#, in: html)?.htmlToPlainText()
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let raw = firstMatch(#"<title[^>]*>([\s\S]*?)</title>"#, in: html) else { return nil }
+        let text = htmlToPlainText(raw).trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.isEmpty ? nil : text
     }
 }
 

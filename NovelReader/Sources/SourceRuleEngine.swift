@@ -269,7 +269,8 @@ enum SourceRuleEngine {
             return xpathText(r, in: html)
         }
         if r.hasPrefix("@") {
-            return attr(r, in: html)
+            // "@href" 这类纯属性规则，需要从 HTML 里直接抓属性值
+            return attrText(r, in: html)
         }
         guard let css = CSSRule.parse(r) else { return nil }
         let root = LightHTMLParser.parse(html)
