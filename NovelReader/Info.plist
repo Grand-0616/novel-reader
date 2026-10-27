@@ -60,17 +60,18 @@
 	<!-- 图标直接用 PNG 文件，不走 asset catalog。
 	     原因：GitHub Actions runner 上 actool 缺少 iOS 模拟器运行时，
 	     编译 Assets.xcassets 会直接失败。用 CFBundleIconFiles 绕开 actool。
-	     Icons 目录以 folder 方式整体拷进 bundle，所以路径带 Icons/ 前缀。 -->
+	     15 个 PNG 已逐个登记为独立资源，平铺在 NovelReader.app/ 根目录，
+	     所以这里只写文件名，不带路径。 -->
 	<key>CFBundleIcons</key>
 	<dict>
 		<key>CFBundlePrimaryIcon</key>
 		<dict>
 			<key>CFBundleIconFiles</key>
 			<array>
-				<string>Icons/AppIcon-20</string>
-				<string>Icons/AppIcon-29</string>
-				<string>Icons/AppIcon-40</string>
-				<string>Icons/AppIcon-60</string>
+				<string>AppIcon-20</string>
+				<string>AppIcon-29</string>
+				<string>AppIcon-40</string>
+				<string>AppIcon-60</string>
 			</array>
 		</dict>
 	</dict>
@@ -80,11 +81,11 @@
 		<dict>
 			<key>CFBundleIconFiles</key>
 			<array>
-				<string>Icons/AppIcon-20</string>
-				<string>Icons/AppIcon-29</string>
-				<string>Icons/AppIcon-40</string>
-				<string>Icons/AppIcon-76</string>
-				<string>Icons/AppIcon-83.5</string>
+				<string>AppIcon-20</string>
+				<string>AppIcon-29</string>
+				<string>AppIcon-40</string>
+				<string>AppIcon-76</string>
+				<string>AppIcon-83.5</string>
 			</array>
 		</dict>
 	</dict>
