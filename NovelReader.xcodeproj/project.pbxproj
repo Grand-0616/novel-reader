@@ -51,21 +51,21 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		AA0000000000000000001001 /* AppIcon-1024.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = AppIcon-1024.png; sourceTree = "<group>"; };
-		AA0000000000000000001003 /* AppIcon-20@1x~ipad.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = AppIcon-20@1x~ipad.png; sourceTree = "<group>"; };
-		AA0000000000000000001005 /* AppIcon-20@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = AppIcon-20@2x.png; sourceTree = "<group>"; };
-		AA0000000000000000001007 /* AppIcon-20@3x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = AppIcon-20@3x.png; sourceTree = "<group>"; };
-		AA0000000000000000001009 /* AppIcon-29@1x~ipad.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = AppIcon-29@1x~ipad.png; sourceTree = "<group>"; };
-		AA000000000000000000100B /* AppIcon-29@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = AppIcon-29@2x.png; sourceTree = "<group>"; };
-		AA000000000000000000100D /* AppIcon-29@3x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = AppIcon-29@3x.png; sourceTree = "<group>"; };
-		AA000000000000000000100F /* AppIcon-40@1x~ipad.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = AppIcon-40@1x~ipad.png; sourceTree = "<group>"; };
-		AA0000000000000000001011 /* AppIcon-40@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = AppIcon-40@2x.png; sourceTree = "<group>"; };
-		AA0000000000000000001013 /* AppIcon-40@3x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = AppIcon-40@3x.png; sourceTree = "<group>"; };
-		AA0000000000000000001015 /* AppIcon-60@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = AppIcon-60@2x.png; sourceTree = "<group>"; };
-		AA0000000000000000001017 /* AppIcon-60@3x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = AppIcon-60@3x.png; sourceTree = "<group>"; };
-		AA0000000000000000001019 /* AppIcon-76@1x~ipad.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = AppIcon-76@1x~ipad.png; sourceTree = "<group>"; };
-		AA000000000000000000101B /* AppIcon-76@2x~ipad.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = AppIcon-76@2x~ipad.png; sourceTree = "<group>"; };
-		AA000000000000000000101D /* AppIcon-83.5@2x~ipad.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = AppIcon-83.5@2x~ipad.png; sourceTree = "<group>"; };
+		AA0000000000000000001001 /* AppIcon-1024.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "AppIcon-1024.png"; sourceTree = "<group>"; };
+		AA0000000000000000001003 /* AppIcon-20@1x~ipad.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "AppIcon-20@1x~ipad.png"; sourceTree = "<group>"; };
+		AA0000000000000000001005 /* AppIcon-20@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "AppIcon-20@2x.png"; sourceTree = "<group>"; };
+		AA0000000000000000001007 /* AppIcon-20@3x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "AppIcon-20@3x.png"; sourceTree = "<group>"; };
+		AA0000000000000000001009 /* AppIcon-29@1x~ipad.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "AppIcon-29@1x~ipad.png"; sourceTree = "<group>"; };
+		AA000000000000000000100B /* AppIcon-29@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "AppIcon-29@2x.png"; sourceTree = "<group>"; };
+		AA000000000000000000100D /* AppIcon-29@3x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "AppIcon-29@3x.png"; sourceTree = "<group>"; };
+		AA000000000000000000100F /* AppIcon-40@1x~ipad.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "AppIcon-40@1x~ipad.png"; sourceTree = "<group>"; };
+		AA0000000000000000001011 /* AppIcon-40@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "AppIcon-40@2x.png"; sourceTree = "<group>"; };
+		AA0000000000000000001013 /* AppIcon-40@3x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "AppIcon-40@3x.png"; sourceTree = "<group>"; };
+		AA0000000000000000001015 /* AppIcon-60@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "AppIcon-60@2x.png"; sourceTree = "<group>"; };
+		AA0000000000000000001017 /* AppIcon-60@3x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "AppIcon-60@3x.png"; sourceTree = "<group>"; };
+		AA0000000000000000001019 /* AppIcon-76@1x~ipad.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "AppIcon-76@1x~ipad.png"; sourceTree = "<group>"; };
+		AA000000000000000000101B /* AppIcon-76@2x~ipad.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "AppIcon-76@2x~ipad.png"; sourceTree = "<group>"; };
+		AA000000000000000000101D /* AppIcon-83.5@2x~ipad.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "AppIcon-83.5@2x~ipad.png"; sourceTree = "<group>"; };
 		AA0000000000000000000201 /* NovelReaderApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NovelReaderApp.swift; sourceTree = "<group>"; };
 		AA0000000000000000000202 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		AA0000000000000000000203 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
