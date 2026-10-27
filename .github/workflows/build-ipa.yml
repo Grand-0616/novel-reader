@@ -28,8 +28,7 @@ jobs:
         run: |
           echo "当前可用 Xcode："
           ls /Applications | grep -i xcode || true
-          # 用 16.2：稳定、对 SwiftData / Observation 支持完整，
-          # 且不会像 16.3+ 那样强制要求模拟器运行时来跑 actool。
+          # 用 16.2：稳定、对 SwiftData / Observation 支持完整
           if [ -d "/Applications/Xcode_16.2.app" ]; then
             sudo xcode-select -s /Applications/Xcode_16.2.app
           elif [ -d "/Applications/Xcode_16.1.app" ]; then
@@ -38,10 +37,53 @@ jobs:
             sudo xcode-select -s /Applications/Xcode.app
           fi
           xcodebuild -version
-          echo "--- 已安装的 iOS SDK ---"
+          echo "--- 已安装的 SDK ---"
+          xcodebuild -showsdks || true
+
+      - name: 确保 iOS 平台已安装
+        run: |
+          set -euo pipefail
+
+          # GitHub 的 macos runner 有时只装了 iOS SDK 头文件，
+          # 但没装完整平台包，导致 "iOS 18.2 is not installed"。
+          # 这里先检查，缺了就下载安装。
+          echo "--- 检查 iOS 平台 ---"
+          if xcrun --sdk iphoneos --show-sdk-path >/dev/null 2>&1; then
+            echo "iOS SDK 路径: $(xcrun --sdk iphoneos --show-sdk-path)"
+          else
+            echo "iOS SDK 不可用"
+          fi
+
+          echo "--- 检查 platform ---"
+          xcodebuild -showsdks | grep -i "iphoneos" || echo "无 iphoneos SDK"
+
+          # 尝试列出已安装的平台
+          echo "--- 已安装平台 ---"
+          ls /Applications/Xcode_16.2.app/Contents/Developer/Platforms/ 2>/dev/null || true
+
+          # 检查是否有 iPhoneOS.platform 的 SDK
+          SDK_DIR="/Applications/Xcode_16.2.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs"
+          if [ -d "$SDK_DIR" ]; then
+            echo "SDK 目录内容："
+            ls "$SDK_DIR" || true
+          else
+            echo "::warning::没有找到 iPhoneOS SDK 目录，尝试下载平台"
+          fi
+
+          # 如果平台真的缺失，用 xcodebuild 的 -downloadPlatform 拉取
+          # 这一步可能需要几分钟，但只在缺失时执行
+          if ! ls "$SDK_DIR"/iPhoneOS*.sdk >/dev/null 2>&1; then
+            echo "开始下载 iOS 平台（可能需要几分钟）..."
+            xcodebuild -downloadPlatform iOS || {
+              echo "::warning::-downloadPlatform 失败，尝试 xcodebuild -runFirstLaunch"
+              sudo xcodebuild -runFirstLaunch || true
+            }
+          else
+            echo "iOS SDK 已存在，跳过下载"
+          fi
+
+          echo "--- 最终检查 ---"
           xcodebuild -showsdks | grep -i iphoneos || true
-          echo "--- 模拟器运行时（可能为空，不影响真机构建）---"
-          xcrun simctl list runtimes 2>/dev/null | head -20 || echo "无模拟器运行时"
 
       - name: 显示工程信息
         run: |
@@ -52,26 +94,26 @@ jobs:
         run: |
           set -euo pipefail
 
-          # ── 关于下面这些设置 ──
+          # ── 关键设置说明 ──
           #
           # CODE_SIGNING_ALLOWED=NO
-          #   跳过所有签名步骤，产出未签名 .app，后面用 Sideloadly 在 Windows 上重签。
+          #   跳过所有签名，产出未签名 .app，后面用 Sideloadly 在 Windows 上重签。
           #
           # ASSETCATALOG_COMPILER_SKIP_APP_STORE_DEPLOYMENT=YES
-          #   关键：GitHub Actions 的 macos runner 上没装 iOS 模拟器运行时，
-          #   而 Xcode 16.2+ 的 actool 在编译 asset catalog 时会去找模拟器运行时
-          #   来渲染图标，找不到就报：
-          #     "No simulator runtime version ... available to use with iphonesimulator SDK"
-          #   这个开关让 actool 跳过 App Store 相关的渲染步骤，直接用我们提供的 PNG。
+          #   GitHub Actions 的 macos runner 没装 iOS 模拟器运行时，
+          #   Xcode 16.2+ 的 actool 编译 asset catalog 时会去找它来渲染图标，
+          #   找不到就报 "No simulator runtime version ... available"。
+          #   这个开关跳过 App Store 相关渲染步骤。
           #
-          # ENABLE_ON_DEMAND_RESOURCES=NO / DEBUG_INFORMATION_FORMAT
-          #   减少无关产物，避免再踩 runner 环境的坑。
+          # 不使用 -destination 'generic/platform=iOS'
+          #   runner 上 iOS 平台包可能不完整，-destination 会要求匹配设备/平台，
+          #   直接报 "iOS 18.2 is not installed"。
+          #   只用 -sdk iphoneos 就能走 SDK 编译路径，不依赖平台包完整性。
           xcodebuild build \
             -project NovelReader.xcodeproj \
             -scheme NovelReader \
             -configuration Release \
             -sdk iphoneos \
-            -destination 'generic/platform=iOS' \
             -derivedDataPath "$RUNNER_TEMP/DerivedData" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
