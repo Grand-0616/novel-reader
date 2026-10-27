@@ -166,13 +166,29 @@
 		AA0000000000000000000515 /* Views */ = {
 			isa = PBXGroup;
 			children = (
-				AA0000000000000000000219 /* DiscoverView.swift */,
-				AA000000000000000000021A /* SourcesView.swift */,
-				AA000000000000000000021B /* SettingsView.swift */,
+				AA0000000000000000000517 /* Discover */,
 				AA0000000000000000000520 /* Library */,
 				AA0000000000000000000521 /* Reader */,
+				AA0000000000000000000518 /* Settings */,
 			);
 			path = Views;
+			sourceTree = "<group>";
+		};
+		AA0000000000000000000517 /* Discover */ = {
+			isa = PBXGroup;
+			children = (
+				AA0000000000000000000219 /* DiscoverView.swift */,
+			);
+			path = Discover;
+			sourceTree = "<group>";
+		};
+		AA0000000000000000000518 /* Settings */ = {
+			isa = PBXGroup;
+			children = (
+				AA000000000000000000021A /* SourcesView.swift */,
+				AA000000000000000000021B /* SettingsView.swift */,
+			);
+			path = Settings;
 			sourceTree = "<group>";
 		};
 		AA0000000000000000000520 /* Library */ = {

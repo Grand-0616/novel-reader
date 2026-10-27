@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const suites = [
+  ['工程文件路径（pbxproj → 磁盘）', 'verify-pbxproj.mjs'],
   ['结构检查（括号/类型/import）', 'check-syntax.mjs'],
   ['Swift 静态检查', 'lint-swift.mjs'],
   ['核心算法（分章/编码/HTML/EPUB/OPDS）', 'verify-core.mjs'],
