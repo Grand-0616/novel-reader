@@ -59,7 +59,8 @@
 
 	<!-- 图标直接用 PNG 文件，不走 asset catalog。
 	     原因：GitHub Actions runner 上 actool 缺少 iOS 模拟器运行时，
-	     编译 Assets.xcassets 会直接失败。用 CFBundleIconFiles 可以完全绕开 actool。 -->
+	     编译 Assets.xcassets 会直接失败。用 CFBundleIconFiles 绕开 actool。
+	     15 个尺寸的 PNG 已逐个登记为独立资源，会平铺进 NovelReader.app/ 根目录。 -->
 	<key>CFBundleIcons</key>
 	<dict>
 		<key>CFBundlePrimaryIcon</key>
@@ -71,8 +72,6 @@
 				<string>AppIcon-40</string>
 				<string>AppIcon-60</string>
 			</array>
-			<key>CFBundleIconName</key>
-			<string>AppIcon</string>
 		</dict>
 	</dict>
 	<key>CFBundleIcons~ipad</key>
@@ -87,8 +86,6 @@
 				<string>AppIcon-76</string>
 				<string>AppIcon-83.5</string>
 			</array>
-			<key>CFBundleIconName</key>
-			<string>AppIcon</string>
 		</dict>
 	</dict>
 
