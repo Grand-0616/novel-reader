@@ -99,16 +99,16 @@ jobs:
           # CODE_SIGNING_ALLOWED=NO
           #   跳过所有签名，产出未签名 .app，后面用 Sideloadly 在 Windows 上重签。
           #
-          # ASSETCATALOG_COMPILER_SKIP_APP_STORE_DEPLOYMENT=YES
-          #   GitHub Actions 的 macos runner 没装 iOS 模拟器运行时，
-          #   Xcode 16.2+ 的 actool 编译 asset catalog 时会去找它来渲染图标，
-          #   找不到就报 "No simulator runtime version ... available"。
-          #   这个开关跳过 App Store 相关渲染步骤。
+          # 不使用 -destination
+          #   runner 上 iOS 平台包可能不完整，-destination 要求匹配设备/平台，
+          #   会直接报 "iOS 18.2 is not installed"。
+          #   只用 -sdk iphoneos 走 SDK 编译路径。
           #
-          # 不使用 -destination 'generic/platform=iOS'
-          #   runner 上 iOS 平台包可能不完整，-destination 会要求匹配设备/平台，
-          #   直接报 "iOS 18.2 is not installed"。
-          #   只用 -sdk iphoneos 就能走 SDK 编译路径，不依赖平台包完整性。
+          # 图标不走 asset catalog（见 Info.plist 的 CFBundleIconFiles）
+          #   原因：runner 上没有 iOS 模拟器运行时，Xcode 16.2+ 的 actool
+          #   编译 Assets.xcassets 时会去找它渲染图标，找不到就报
+          #   "No simulator runtime version ... available"。
+          #   现在图标是 15 个独立 PNG，作为 Resources 整目录拷进 bundle。
           xcodebuild build \
             -project NovelReader.xcodeproj \
             -scheme NovelReader \
@@ -121,8 +121,6 @@ jobs:
             CODE_SIGN_ENTITLEMENTS="" \
             PROVISIONING_PROFILE_SPECIFIER="" \
             ONLY_ACTIVE_ARCH=NO \
-            ASSETCATALOG_COMPILER_SKIP_APP_STORE_DEPLOYMENT=YES \
-            ENABLE_ON_DEMAND_RESOURCES=NO \
             -quiet
 
           echo "编译成功"

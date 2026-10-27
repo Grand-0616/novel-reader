@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		AA000000000000000000011C /* Icons in Resources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000304 /* Icons */; };
 		AA0000000000000000000101 /* NovelReaderApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000201 /* NovelReaderApp.swift */; };
 		AA0000000000000000000102 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000202 /* AppState.swift */; };
 		AA0000000000000000000103 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000203 /* Models.swift */; };
@@ -33,10 +34,10 @@
 		AA0000000000000000000118 /* DiscoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000219 /* DiscoverView.swift */; };
 		AA0000000000000000000119 /* SourcesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000021A /* SourcesView.swift */; };
 		AA000000000000000000011A /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000021B /* SettingsView.swift */; };
-		AA000000000000000000011B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000301 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		AA0000000000000000000304 /* Icons */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Icons; sourceTree = "<group>"; };
 		AA0000000000000000000201 /* NovelReaderApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NovelReaderApp.swift; sourceTree = "<group>"; };
 		AA0000000000000000000202 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		AA0000000000000000000203 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
@@ -63,7 +64,6 @@
 		AA0000000000000000000219 /* DiscoverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoverView.swift; sourceTree = "<group>"; };
 		AA000000000000000000021A /* SourcesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourcesView.swift; sourceTree = "<group>"; };
 		AA000000000000000000021B /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
-		AA0000000000000000000301 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		AA0000000000000000000302 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		AA0000000000000000000303 /* NovelReader.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = NovelReader.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -213,7 +213,7 @@
 		AA0000000000000000000516 /* Resources */ = {
 			isa = PBXGroup;
 			children = (
-				AA0000000000000000000301 /* Assets.xcassets */,
+				AA0000000000000000000304 /* Icons */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -277,7 +277,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				AA000000000000000000011B /* Assets.xcassets in Resources */,
+				AA000000000000000000011C /* Icons in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -374,8 +374,6 @@
 		AA0000000000000000000903 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
@@ -402,8 +400,6 @@
 		AA0000000000000000000904 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
