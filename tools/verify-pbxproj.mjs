@@ -21,15 +21,20 @@ const PBX = join(ROOT, 'NovelReader.xcodeproj', 'project.pbxproj');
 const pbx = readFileSync(PBX, 'utf8');
 
 // ── 1. 解析所有 PBXGroup，建立 id -> {path, parent} ──
+// Xcode 的对象 ID 是 24 位十六进制。本项目里出现了几种前缀：
+//   AA...（手写的工程骨架）、EB/ER/EG（图标资源）。
+// 所以这里统一用 [A-Z0-9]{24} 匹配，不限定前缀。
+const ID = '([A-Z0-9]{24})';
 const groups = new Map();
-const groupRe = /([A-F0-9]{24}) \/\* ([^*]+) \*\/ = \{\s*isa = PBXGroup;([\s\S]*?)\n\t\t\};/g;
+const groupRe = new RegExp(
+  ID + ' /\\* ([^*]+) \\*/ = \\{\\s*isa = PBXGroup;([\\s\\S]*?)\\n\\t\\t\\};', 'g');
 let m;
 while ((m = groupRe.exec(pbx))) {
   const [, id, name, body] = m;
   const pathM = /path = ([^;]+);/.exec(body);
   const childM = /children = \(([\s\S]*?)\);/.exec(body);
   const children = childM
-    ? [...childM[1].matchAll(/([A-F0-9]{24})/g)].map((x) => x[1])
+    ? [...childM[1].matchAll(new RegExp(ID, 'g'))].map((x) => x[1])
     : [];
   groups.set(id, { id, name, path: pathM ? pathM[1] : null, children, body });
 }
@@ -41,13 +46,20 @@ for (const g of groups.values()) {
 }
 
 // ── 3. 解析所有 PBXFileReference ──
+// 逐行解析，不依赖缩进层数（不同 Xcode 版本缩进可能不同）
 const files = new Map();
-const fileRe = /([A-F0-9]{24}) \/\* ([^*]+) \*\/ = \{isa = PBXFileReference;([^}]*)\}/g;
-while ((m = fileRe.exec(pbx))) {
-  const [, id, name, body] = m;
-  const pathM = /path = ([^;]+);/.exec(body);
-  files.set(id, { id, name, path: pathM ? pathM[1] : name });
+for (const line of pbx.split('\n')) {
+  if (!line.includes('= {isa = PBXFileReference;')) continue;
+  // ID 是行首第一个 24 位十六进制串
+  const idM = line.match(/^\s*([A-Z0-9]{24})\b/);
+  if (!idM) continue;
+  const id = idM[1];
+  const nameM = line.match(/\/\* ([^*]+) \*\//);
+  const pathM = line.match(/path = ([^;]+);/);
+  const name = nameM ? nameM[1].trim() : id;
+  files.set(id, { id, name, path: pathM ? pathM[1].trim() : name });
 }
+console.log(`解析到 ${files.size} 个 PBXFileReference`);
 
 // ── 4. 递归计算完整路径 ──
 function fullPath(id) {
