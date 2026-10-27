@@ -280,39 +280,56 @@ import zlib
 
 extension Data {
     /// 解压 raw deflate 流（ZIP method 8）
+    ///
+    /// 实现要点：
+    ///   1. 指针必须全程有效：zlib 在多次 inflate 调用之间会继续读 next_in，
+    ///      所以整个循环必须放在 withUnsafeMutableBufferPointer 的作用域内，
+    ///      不能在作用域结束后再调用 inflate（那样 next_in 是悬垂指针）。
+    ///   2. 不用嵌套的 withUnsafeMutableBufferPointer，避免 "overlapping accesses"；
+    ///      输出用独立分配的 scratch 缓冲。
     func inflateRaw() -> Data? {
         guard !isEmpty else { return Data() }
-        var stream = z_stream()
-        var status = inflateInit2_(&stream, -MAX_WBITS, ZLIB_VERSION, Int32(MemoryLayout<z_stream>.size))
-        guard status == Z_OK else { return nil }
-        defer { inflateEnd(&stream) }
-
-        var output = Data()
-        let chunk = 64 * 1024
-        var buffer = [UInt8](repeating: 0, count: chunk)
 
         var input = [UInt8](self)
-        return input.withUnsafeMutableBufferPointer { inPtr -> Data? in
+        let inputCount = input.count
+
+        var stream = z_stream()
+        let initStatus = inflateInit2_(&stream, -MAX_WBITS, ZLIB_VERSION,
+                                       Int32(MemoryLayout<z_stream>.size))
+        guard initStatus == Z_OK else { return nil }
+        defer { inflateEnd(&stream) }
+
+        let chunkSize = 64 * 1024
+        let scratch = UnsafeMutablePointer<UInt8>.allocate(capacity: chunkSize)
+        defer { scratch.deallocate() }
+
+        // 整个解压循环都在 input 的指针作用域内完成。
+        // 所有可变状态（out / status）都在闭包内，通过元组带出，
+        // 避免"闭包内外同时访问同一变量"的独占性错误。
+        let result: (data: Data, ok: Bool) = input.withUnsafeMutableBufferPointer { inPtr -> (Data, Bool) in
+            var out = Data()
+            var status: Int32 = Z_OK
             stream.next_in = inPtr.baseAddress
-            stream.avail_in = uInt(input.count)
+            stream.avail_in = uInt(inputCount)
 
             repeat {
-                var produced = 0
-                buffer.withUnsafeMutableBufferPointer { outPtr in
-                    stream.next_out = outPtr.baseAddress
-                    stream.avail_out = uInt(chunk)
-                    status = zlib.inflate(&stream, Z_NO_FLUSH)
-                    produced = chunk - Int(stream.avail_out)
-                }
+                stream.next_out = scratch
+                stream.avail_out = uInt(chunkSize)
+                status = zlib.inflate(&stream, Z_NO_FLUSH)
+                let produced = chunkSize - Int(stream.avail_out)
                 if produced > 0 {
-                    output.append(buffer, count: produced)
+                    out.append(scratch, count: produced)
                 }
                 if status == Z_STREAM_END { break }
-                if status != Z_OK && status != Z_BUF_ERROR { return nil }
+                if status != Z_OK && status != Z_BUF_ERROR { break }
                 if stream.avail_in == 0 && produced == 0 { break }
             } while true
 
-            return output.isEmpty ? nil : output
+            let ok = (status == Z_STREAM_END || status == Z_OK || status == Z_BUF_ERROR)
+            return (out, ok)
         }
+
+        guard result.ok, !result.data.isEmpty else { return nil }
+        return result.data
     }
 }
