@@ -382,14 +382,32 @@ struct BookCell: View {
 
 struct ImportBanner: View {
     let message: String
+    /// 有确定进度时显示线性进度条（下载/解析导入），否则显示转圈
+    var progress: ImportProgress? = nil
+
     var body: some View {
-        HStack(spacing: 8) {
-            ProgressView().scaleEffect(0.8)
-            Text(message).font(.footnote)
+        HStack(spacing: 10) {
+            if progress == nil {
+                ProgressView().scaleEffect(0.8)
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                Text(message).font(.footnote).lineLimit(2)
+                if let p = progress {
+                    ProgressView(value: min(max(p.fraction, 0), 1))
+                        .progressViewStyle(.linear)
+                        .frame(minWidth: 180)
+                    if !p.phase.isEmpty || !p.detail.isEmpty {
+                        Text(p.phase.isEmpty ? p.detail : p.phase)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+            }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
-        .background(.regularMaterial, in: Capsule())
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
         .shadow(radius: 3)
     }
 }
