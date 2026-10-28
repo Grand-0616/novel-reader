@@ -187,7 +187,7 @@ struct BookDetailView: View {
                 Spacer()
                 if let dl = DownloadManager.shared.task(for: book.id) {
                     switch dl.state {
-                    case .running(let done, let total, let current):
+                    case .running(let done, let total, let current, _):
                         Text("下载中 \(done)/\(total) \(current)")
                             .font(.caption2)
                             .foregroundStyle(.secondary)

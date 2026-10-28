@@ -45,86 +45,103 @@ struct DiscoverView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
-                if enabledSources.isEmpty {
-                    emptySources
-                } else if isRuleSource && showSearch {
-                    searchResultsView
-                } else {
-                    browserView
+            mainContent
+                .navigationTitle(selectedSource?.name ?? "发现")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar { mainToolbar }
+                .searchable(text: $searchText, isPresented: $showSearch, prompt: "搜索书名 / 作者")
+                .onSubmit(of: .search) {
+                    Task { await performSearch() }
                 }
-            }
-            .navigationTitle(selectedSource?.name ?? "发现")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Menu {
-                        ForEach(enabledSources) { s in
-                            Button {
-                                selectedSourceID = s.id
-                                path = []
-                                currentURL = nil
-                                showSearch = s.kind == .rules || s.kind == .jsonAPI
-                                if !showSearch { Task { await browse(nil) } }
-                            } label: {
-                                Label(s.name, systemImage: s.kind.symbolName)
-                            }
-                        }
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: selectedSource?.kind.symbolName ?? "network")
-                            Text(selectedSource?.name ?? "选择").font(.subheadline)
-                        }
+                .overlay(alignment: .top) {
+                    if let importMessage {
+                        ImportBanner(message: importMessage, progress: importProgress)
+                            .padding(.top, 6)
                     }
                 }
-                ToolbarItem(placement: .topBarTrailing) {
+                .alert("出错了", isPresented: errorPresented) {
+                    Button("好") { errorMessage = nil }
+                } message: {
+                    Text(errorMessage ?? "")
+                }
+                .task {
+                    if selectedSourceID == nil {
+                        selectedSourceID = enabledSources.first?.id
+                    }
+                    await refreshLibraryIndex()
                     if isRuleSource {
-                        Button {
-                            withAnimation { showSearch.toggle() }
-                        } label: {
-                            Image(systemName: showSearch ? "folder" : "magnifyingglass")
-                        }
-                    } else if let url = currentURL, path.count > 0 {
-                        Button {
-                            Task { await browse(url) }
-                        } label: {
-                            Image(systemName: "arrow.clockwise")
-                        }
+                        showSearch = true
+                    } else if entries.isEmpty {
+                        await browse(nil)
                     }
                 }
-            }
-            .searchable(text: $searchText, isPresented: $showSearch, prompt: "搜索书名 / 作者")
-            .onSubmit(of: .search) {
-                Task { await performSearch() }
-            }
-            .overlay(alignment: .top) {
-                if let importMessage {
-                    ImportBanner(message: importMessage, progress: importProgress)
-                        .padding(.top, 6)
+                .onChange(of: importMessage) { _, newValue in
+                    // 导入结束（成功或失败）后刷新已下载标记
+                    if newValue == nil { Task { await refreshLibraryIndex() } }
+                }
+        }
+    }
+
+    /// 主体内容：拆出来单独声明，避免 body 里三元 + 修饰符链过长导致
+    /// Swift 类型检查超时（error: unable to type-check in reasonable time）。
+    @ViewBuilder
+    private var mainContent: some View {
+        if enabledSources.isEmpty {
+            emptySources
+        } else if isRuleSource && showSearch {
+            searchResultsView
+        } else {
+            browserView
+        }
+    }
+
+    private var errorPresented: Binding<Bool> {
+        Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } }
+        )
+    }
+
+    @ToolbarContentBuilder
+    private var mainToolbar: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) { sourceMenu }
+        ToolbarItem(placement: .topBarTrailing) { trailingToolbarButton }
+    }
+
+    private var sourceMenu: some View {
+        Menu {
+            ForEach(enabledSources) { s in
+                Button {
+                    selectedSourceID = s.id
+                    path = []
+                    currentURL = nil
+                    showSearch = s.kind == .rules || s.kind == .jsonAPI
+                    if !showSearch { Task { await browse(nil) } }
+                } label: {
+                    Label(s.name, systemImage: s.kind.symbolName)
                 }
             }
-            .alert("出错了", isPresented: Binding(
-                get: { errorMessage != nil },
-                set: { if !$0 { errorMessage = nil } }
-            )) {
-                Button("好") { errorMessage = nil }
-            } message: {
-                Text(errorMessage ?? "")
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: selectedSource?.kind.symbolName ?? "network")
+                Text(selectedSource?.name ?? "选择").font(.subheadline)
             }
-            .task {
-                if selectedSourceID == nil {
-                    selectedSourceID = enabledSources.first?.id
-                }
-                await refreshLibraryIndex()
-                if isRuleSource {
-                    showSearch = true
-                } else if entries.isEmpty {
-                    await browse(nil)
-                }
+        }
+    }
+
+    @ViewBuilder
+    private var trailingToolbarButton: some View {
+        if isRuleSource {
+            Button {
+                withAnimation { showSearch.toggle() }
+            } label: {
+                Image(systemName: showSearch ? "folder" : "magnifyingglass")
             }
-            .onChange(of: importMessage) { _, newValue in
-                // 导入结束（成功或失败）后刷新已下载标记
-                if newValue == nil { Task { await refreshLibraryIndex() } }
+        } else if let url = currentURL, path.count > 0 {
+            Button {
+                Task { await browse(url) }
+            } label: {
+                Image(systemName: "arrow.clockwise")
             }
         }
     }
@@ -253,8 +270,8 @@ struct DiscoverView: View {
                             AsyncCover(url: candidate.coverURL, source: selectedSource)
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(candidate.title).font(.subheadline).lineLimit(2)
-                                if let author = candidate.author, !author.isEmpty {
-                                    Text(author).font(.caption).foregroundStyle(.secondary)
+                                if !candidate.author.isEmpty {
+                                    Text(candidate.author).font(.caption).foregroundStyle(.secondary)
                                 }
                             }
                             Spacer()

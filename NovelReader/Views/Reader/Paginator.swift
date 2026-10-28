@@ -467,7 +467,7 @@ final class ScrollableTextContainer: UIView, UIScrollViewDelegate {
         CTFrameGetLineOrigins(frame, CFRange(location: 0, length: 0), &origins)
         let height = max(textView.probeHeight, 1)
         for i in 0..<count {
-            guard let line = lines[i] as? CTLine else { continue }
+            let line = lines[i] as! CTLine
             let range = CTLineGetStringRange(line)
             // CT 原点在左下：top = 总高 - y - 行高
             let lineHeight = CTLineGetTypographicBounds(line, nil, nil, nil)
