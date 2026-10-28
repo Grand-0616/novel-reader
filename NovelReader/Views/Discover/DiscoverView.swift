@@ -4,12 +4,19 @@
 //
 //  发现：浏览 NAS 书库目录 / 在线书源搜索 / 一键加入书架并下载
 //
+//  本轮改动：
+//   - 服务器列表里已下载过的书显示"已在书架"标记，避免重复下载
+//   - 导入/下载过程显示真实进度条（章节维度 + 字节维度）
+//   - 修掉 .alert(isPresented: .constant(...)) 关不掉的弹窗
+//
 
 import SwiftUI
+import SwiftData
 
 struct DiscoverView: View {
     @Environment(AppState.self) private var appState
     @Environment(SourceRegistry.self) private var registry
+    @Environment(\.modelContext) private var modelContext
 
     @State private var selectedSourceID: UUID?
     @State private var entries: [SourceEntry] = []
@@ -20,8 +27,11 @@ struct DiscoverView: View {
     @State private var searchText = ""
     @State private var searchResults: [RemoteBookCandidate] = []
     @State private var isSearching = false
+    @State private var importProgress: ImportProgress?
     @State private var importMessage: String?
     @State private var showSearch = false
+    /// 书库里已有书的索引：用于给服务器列表打"已下载"标记
+    @State private var libraryIndex = LibraryIndex()
 
     private var enabledSources: [RemoteSource] { registry.sources.filter(\.isEnabled) }
 
@@ -89,11 +99,14 @@ struct DiscoverView: View {
             }
             .overlay(alignment: .top) {
                 if let importMessage {
-                    ImportBanner(message: importMessage)
+                    ImportBanner(message: importMessage, progress: importProgress)
                         .padding(.top, 6)
                 }
             }
-            .alert("出错了", isPresented: .constant(errorMessage != nil)) {
+            .alert("出错了", isPresented: Binding(
+                get: { errorMessage != nil },
+                set: { if !$0 { errorMessage = nil } }
+            )) {
                 Button("好") { errorMessage = nil }
             } message: {
                 Text(errorMessage ?? "")
@@ -102,11 +115,16 @@ struct DiscoverView: View {
                 if selectedSourceID == nil {
                     selectedSourceID = enabledSources.first?.id
                 }
+                await refreshLibraryIndex()
                 if isRuleSource {
                     showSearch = true
                 } else if entries.isEmpty {
                     await browse(nil)
                 }
+            }
+            .onChange(of: importMessage) { _, newValue in
+                // 导入结束（成功或失败）后刷新已下载标记
+                if newValue == nil { Task { await refreshLibraryIndex() } }
             }
         }
     }
@@ -145,6 +163,18 @@ struct DiscoverView: View {
                             entryRow(entry)
                         }
                         .buttonStyle(.plain)
+                        .swipeActions(edge: .trailing) {
+                            if entry.kind != .directory, !isDownloaded(entry) {
+                                Button {
+                                    if let source = selectedSource {
+                                        Task { await importEntry(entry, source: source) }
+                                    }
+                                } label: {
+                                    Label("下载", systemImage: "arrow.down.circle")
+                                }
+                                .tint(.accentColor)
+                            }
+                        }
                     }
                 }
                 .listStyle(.plain)
@@ -153,7 +183,9 @@ struct DiscoverView: View {
     }
 
     private func entryRow(_ entry: SourceEntry) -> some View {
-        HStack(spacing: 12) {
+        let downloaded = entry.kind != .directory && isDownloaded(entry)
+        let active = entry.kind != .directory ? DownloadManager.shared.task(forRemote: entry.href) : nil
+        return HStack(spacing: 12) {
             Image(systemName: entry.kind == .directory ? "folder.fill" : "book.closed.fill")
                 .foregroundStyle(entry.kind == .directory ? Color.accentColor : Color.secondary)
                 .frame(width: 24)
@@ -167,11 +199,33 @@ struct DiscoverView: View {
                 } else if let summary = entry.summary, !summary.isEmpty, entry.kind == .book {
                     Text(summary).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
                 }
+                // 正在下载：显示进度条，避免用户以为没反应又点一次
+                if let active, active.state.isRunning {
+                    ProgressView(value: active.fraction)
+                        .progressViewStyle(.linear)
+                        .frame(height: 2)
+                    Text(active.statusText)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
             }
             Spacer()
+
             if entry.kind != .directory {
-                Image(systemName: "arrow.down.circle")
-                    .foregroundStyle(.secondary)
+                if downloaded {
+                    // 已在书架：明确标记，避免重复下载
+                    Label("已在书架", systemImage: "checkmark.circle.fill")
+                        .labelStyle(.iconOnly)
+                        .font(.callout)
+                        .foregroundStyle(.green)
+                } else if let active, active.state.isActive {
+                    Image(systemName: "arrow.down.circle.dotted")
+                        .foregroundStyle(Color.accentColor)
+                } else {
+                    Image(systemName: "arrow.down.circle")
+                        .foregroundStyle(.secondary)
+                }
             }
         }
         .contentShape(Rectangle())
@@ -188,43 +242,82 @@ struct DiscoverView: View {
                 ContentUnavailableView {
                     Label("输入关键词搜索", systemImage: "magnifyingglass")
                 } description: {
-                    Text("在「\(selectedSource?.name ?? "")」中搜索")
+                    Text("支持搜索书名、作者")
                 }
             } else {
                 List(searchResults) { candidate in
-                    HStack(spacing: 12) {
-                        AsyncCover(url: candidate.coverURL, source: selectedSource)
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(candidate.title).font(.subheadline).lineLimit(2)
-                            Text(candidate.author.isEmpty ? "未知作者" : candidate.author)
-                                .font(.caption).foregroundStyle(.secondary)
+                    Button {
+                        Task { await importCandidate(candidate) }
+                    } label: {
+                        HStack(spacing: 12) {
+                            AsyncCover(url: candidate.coverURL, source: selectedSource)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(candidate.title).font(.subheadline).lineLimit(2)
+                                if let author = candidate.author, !author.isEmpty {
+                                    Text(author).font(.caption).foregroundStyle(.secondary)
+                                }
+                            }
+                            Spacer()
+                            if isDownloadedURL(candidate.detailURL) {
+                                Label("已在书架", systemImage: "checkmark.circle.fill")
+                                    .labelStyle(.iconOnly)
+                                    .foregroundStyle(.green)
+                            } else {
+                                Image(systemName: "arrow.down.circle").foregroundStyle(.secondary)
+                            }
                         }
-                        Spacer()
-                        Button {
-                            Task { await importCandidate(candidate) }
-                        } label: {
-                            Image(systemName: "plus.circle")
-                                .font(.title3)
-                        }
-                        .buttonStyle(.plain)
                     }
+                    .buttonStyle(.plain)
                 }
                 .listStyle(.plain)
             }
         }
     }
 
-    // MARK: - 动作
+    // MARK: - 已下载判定
+
+    /// 服务器条目是否已经在书架里
+    private func isDownloaded(_ entry: SourceEntry) -> Bool {
+        libraryIndex.contains(sourceID: selectedSource?.id, remoteURL: entry.href,
+                              title: entry.title, bookID: nil)
+    }
+
+    private func isDownloadedURL(_ url: String?) -> Bool {
+        guard let url else { return false }
+        return libraryIndex.contains(sourceID: selectedSource?.id, remoteURL: url,
+                                     title: nil, bookID: nil)
+    }
+
+    private func refreshLibraryIndex() async {
+        let books: [Book] = (try? modelContext.fetch(FetchDescriptor<Book>())) ?? []
+        var idx = LibraryIndex()
+        for b in books {
+            idx.add(sourceID: b.sourceID.flatMap(UUID.init(uuidString:)),
+                    remoteURL: b.remoteURL,
+                    title: b.title)
+        }
+        await MainActor.run { libraryIndex = idx }
+    }
+
+    // MARK: - 交互
 
     private func handleEntryTap(_ entry: SourceEntry) {
-        guard let source = selectedSource else { return }
-        switch entry.kind {
-        case .directory:
+        if entry.kind == .directory {
             Task { await browse(entry.href) }
-        case .book, .chapter:
-            // 下载整本并导入书架
-            Task { await importEntry(entry, source: source) }
+            return
         }
+        guard let source = selectedSource else { return }
+        // 已经在书架：直接提示，不重复下载
+        if isDownloaded(entry) {
+            errorMessage = "《\(entry.title)》已经在书架里了，不需要重复下载。"
+            return
+        }
+        // 已在下载中：只提示
+        if let t = DownloadManager.shared.task(forRemote: entry.href), t.state.isActive {
+            errorMessage = "《\(entry.title)》正在下载中：\(t.statusText)"
+            return
+        }
+        Task { await importEntry(entry, source: source) }
     }
 
     private func browse(_ url: String?) async {
@@ -252,6 +345,7 @@ struct DiscoverView: View {
     }
 
     private func goUp() {
+        guard !path.isEmpty else { return }
         path.removeLast()
         let parent = path.last
         Task { await browse(parent) }
@@ -275,8 +369,11 @@ struct DiscoverView: View {
     }
 
     private func importEntry(_ entry: SourceEntry, source: RemoteSource) async {
-        guard let store = appState.store else { return }
-        await MainActor.run { importMessage = "准备下载《\(entry.title)》" }
+        let store = appState.store ?? Store(context: modelContext)
+        await MainActor.run {
+            importMessage = "准备下载《\(entry.title)》"
+            importProgress = ImportProgress(phase: "准备", fraction: 0, detail: entry.title)
+        }
         do {
             let book: Book
             if source.kind == .rules || source.kind == .jsonAPI {
@@ -284,6 +381,7 @@ struct DiscoverView: View {
                     detailURL: entry.href, source: source, store: store
                 ) { p in
                     Task { @MainActor in
+                        importProgress = p
                         importMessage = "\(p.phase) \(p.detail)"
                     }
                 }
@@ -292,6 +390,7 @@ struct DiscoverView: View {
                     entryURL: entry.href, source: source, store: store
                 ) { p in
                     Task { @MainActor in
+                        importProgress = p
                         importMessage = "\(p.phase) \(p.detail)"
                     }
                 }
@@ -301,40 +400,64 @@ struct DiscoverView: View {
                     origin: source.kind == .opds ? .opds : .directURL
                 ) { p in
                     Task { @MainActor in
-                        importMessage = "\(p.phase)"
+                        importProgress = p
+                        importMessage = "\(p.phase) \(p.detail)"
                     }
                 }
             }
             await MainActor.run {
                 importMessage = "《\(book.title)》已加入书架"
+                importProgress = ImportProgress(phase: "完成", fraction: 1, detail: book.title)
             }
+            await refreshLibraryIndex()
             try? await Task.sleep(nanoseconds: 1_500_000_000)
-            await MainActor.run { importMessage = nil }
+            await MainActor.run {
+                importMessage = nil
+                importProgress = nil
+            }
         } catch {
             await MainActor.run {
                 importMessage = nil
+                importProgress = nil
                 errorMessage = "\(entry.title)：\(error.localizedDescription)"
             }
         }
     }
 
     private func importCandidate(_ candidate: RemoteBookCandidate) async {
-        guard let store = appState.store, let source = selectedSource else { return }
-        await MainActor.run { importMessage = "获取《\(candidate.title)》目录" }
+        guard let source = selectedSource else { return }
+        let store = appState.store ?? Store(context: modelContext)
+        if isDownloadedURL(candidate.detailURL) {
+            errorMessage = "《\(candidate.title)》已经在书架里了。"
+            return
+        }
+        await MainActor.run {
+            importMessage = "获取《\(candidate.title)》目录"
+            importProgress = ImportProgress(phase: "获取目录", fraction: 0, detail: candidate.title)
+        }
         do {
             let book = try await ImportService.shared.importWebBook(
                 detailURL: candidate.detailURL, source: source, store: store
             ) { p in
                 Task { @MainActor in
+                    importProgress = p
                     importMessage = "\(p.phase) \(p.detail)"
                 }
             }
-            await MainActor.run { importMessage = "《\(book.title)》已加入书架" }
+            await MainActor.run {
+                importMessage = "《\(book.title)》已加入书架"
+                importProgress = ImportProgress(phase: "完成", fraction: 1, detail: book.title)
+            }
+            await refreshLibraryIndex()
             try? await Task.sleep(nanoseconds: 1_500_000_000)
-            await MainActor.run { importMessage = nil }
+            await MainActor.run {
+                importMessage = nil
+                importProgress = nil
+            }
         } catch {
             await MainActor.run {
                 importMessage = nil
+                importProgress = nil
                 errorMessage = error.localizedDescription
             }
         }
@@ -352,6 +475,44 @@ struct DiscoverView: View {
                 .buttonStyle(.borderedProminent)
         }
     }
+}
+
+// MARK: - 书库索引（判断"已下载"）
+
+/// 用 (sourceID, remoteURL) 和 (title) 两套索引进快速判断服务器条目是否已入库。
+struct LibraryIndex {
+    private var byURL: Set<String> = []
+    private var byTitle: Set<String> = []
+
+    private static func urlKey(_ sourceID: UUID?, _ url: String) -> String {
+        let sid = sourceID?.uuidString ?? "-"
+        return sid + "|" + url.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    private static func titleKey(_ title: String) -> String {
+        title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    mutating func add(sourceID: UUID?, remoteURL: String?, title: String?) {
+        if let remoteURL, !remoteURL.isEmpty {
+            byURL.insert(Self.urlKey(sourceID, remoteURL))
+        }
+        if let title, !title.isEmpty {
+            byTitle.insert(Self.titleKey(title))
+        }
+    }
+
+    func contains(sourceID: UUID?, remoteURL: String?, title: String?, bookID: UUID?) -> Bool {
+        if let remoteURL, !remoteURL.isEmpty, byURL.contains(Self.urlKey(sourceID, remoteURL)) {
+            return true
+        }
+        if let title, !title.isEmpty, byTitle.contains(Self.titleKey(title)) {
+            return true
+        }
+        return false
+    }
+
+    var isEmpty: Bool { byURL.isEmpty && byTitle.isEmpty }
 }
 
 // MARK: - 远程封面

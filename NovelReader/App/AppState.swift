@@ -67,17 +67,29 @@ enum ReaderTheme: String, CaseIterable, Codable, Identifiable {
 }
 
 enum PageTurnStyle: String, CaseIterable, Codable, Identifiable {
-    case slide      // 左右滑动
-    case none       // 无动画
-    case cover      // 覆盖翻页
+    /// 左右滑动翻页（横向分页）
+    case slide
+    /// 无动画直接切页（横向分页）
+    case none
+    /// 仿真覆盖（横向分页）
+    case cover
+    /// 上下滑动连续滚动（不分页，整章连续排版）
+    case verticalScroll = "vertical"
 
     var id: String { rawValue }
+
     var displayName: String {
         switch self {
-        case .slide: return "滑动"
-        case .none:  return "无动画"
-        case .cover: return "仿真覆盖"
+        case .slide:          return "左右滑动"
+        case .none:           return "无动画"
+        case .cover:          return "仿真覆盖"
+        case .verticalScroll: return "上下滑动"
         }
+    }
+
+    /// 该模式下正文是否连续滚动（不做分页）
+    var isScrollMode: Bool {
+        self == .verticalScroll
     }
 }
 
@@ -105,6 +117,8 @@ final class AppState {
     var marginVertical: Double = 0.03 { didSet { persist() } }
     /// 跟随系统深色
     var followSystemAppearance: Bool = false { didSet { persist() } }
+    /// 是否显示页脚（章节名 / 页码 / 进度）
+    var showFooter: Bool = true { didSet { persist() } }
 
     // ---- 状态 ----
     var store: Store?
@@ -150,6 +164,7 @@ final class AppState {
         static let marginH = "reader.marginH"
         static let marginV = "reader.marginV"
         static let followSystem = "reader.followSystem"
+        static let showFooter = "reader.showFooter"
     }
 
     private func persist() {
@@ -163,6 +178,7 @@ final class AppState {
         d.set(marginHorizontal, forKey: Keys.marginH)
         d.set(marginVertical, forKey: Keys.marginV)
         d.set(followSystemAppearance, forKey: Keys.followSystem)
+        d.set(showFooter, forKey: Keys.showFooter)
     }
 
     private func loadSettings() {
@@ -175,6 +191,7 @@ final class AppState {
         if d.object(forKey: Keys.marginH) != nil { marginHorizontal = d.double(forKey: Keys.marginH) }
         if d.object(forKey: Keys.marginV) != nil { marginVertical = d.double(forKey: Keys.marginV) }
         followSystemAppearance = d.bool(forKey: Keys.followSystem)
+        if d.object(forKey: Keys.showFooter) != nil { showFooter = d.bool(forKey: Keys.showFooter) }
         loaded = true
     }
 
@@ -186,5 +203,6 @@ final class AppState {
         pageTurnStyle = .slide
         marginHorizontal = 0.055
         marginVertical = 0.03
+        showFooter = true
     }
 }

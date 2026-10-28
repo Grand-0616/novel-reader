@@ -119,7 +119,13 @@ final class HTTPClient {
     }
 
     /// 获取原始字节（图片 / 电子书文件）
-    func fetchData(_ urlString: String, source: RemoteSource? = nil, referer: String? = nil) async throws -> Data {
+    /// - Parameter progress: 字节级进度回调 0...1，在后台线程触发
+    func fetchData(
+        _ urlString: String,
+        source: RemoteSource? = nil,
+        referer: String? = nil,
+        progress: (@Sendable (Double) -> Void)? = nil
+    ) async throws -> Data {
         guard let url = Self.resolve(urlString, base: source?.baseURL) else {
             throw HTTPError.invalidURL(urlString)
         }
@@ -135,12 +141,36 @@ final class HTTPClient {
                 request.setValue("Basic \(token)", forHTTPHeaderField: "Authorization")
             }
         }
+
+        // 无进度回调时走原来的轻量路径
+        guard let progress else {
+            do {
+                let (data, response) = try await session.data(for: request)
+                if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+                    throw HTTPError.badStatus(http.statusCode)
+                }
+                guard !data.isEmpty else { throw HTTPError.emptyBody }
+                return data
+            } catch let e as HTTPError {
+                throw e
+            } catch {
+                throw HTTPError.transport(error.localizedDescription)
+            }
+        }
+
+        // 有进度回调：走 delegate 版本，边下边报进度
+        progress(0)
         do {
-            let (data, response) = try await session.data(for: request)
-            if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+            let (tempURL, response) = try await Self.downloadWithProgress(request: request, progress: progress)
+            guard let http = response as? HTTPURLResponse else {
+                throw HTTPError.transport("无 HTTP 响应")
+            }
+            guard (200..<300).contains(http.statusCode) else {
                 throw HTTPError.badStatus(http.statusCode)
             }
+            let data = try Data(contentsOf: tempURL)
             guard !data.isEmpty else { throw HTTPError.emptyBody }
+            progress(1)
             return data
         } catch let e as HTTPError {
             throw e
@@ -149,7 +179,7 @@ final class HTTPClient {
         }
     }
 
-    /// 流式下载到文件（大文件 / 整本下载），回调进度 0...1
+    /// 流式下载到文件（大文件 / 整本下载），回调字节级进度 0...1
     func download(
         _ urlString: String,
         to destination: URL,
@@ -173,15 +203,33 @@ final class HTTPClient {
             }
         }
 
-        let (tempURL, response) = try await session.download(for: request)
-        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-            throw HTTPError.badStatus(http.statusCode)
+        let (tempURL, response) = try await Self.downloadWithProgress(request: request, progress: progress)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw HTTPError.badStatus((response as? HTTPURLResponse)?.statusCode ?? 0)
         }
         try? FileManager.default.removeItem(at: destination)
         try FileManager.default.createDirectory(at: destination.deletingLastPathComponent(),
                                                 withIntermediateDirectories: true)
         try FileManager.default.moveItem(at: tempURL, to: destination)
         progress?(1.0)
+    }
+
+    /// 用 URLSessionDownloadDelegate 拿字节级进度。
+    /// URLSession.download(for:) 的 AsyncSequence 只在结束时给结果，
+    /// 中间没有任何进度，所以这里必须走 delegate。
+    private static func downloadWithProgress(
+        request: URLRequest,
+        progress: (@Sendable (Double) -> Void)?
+    ) async throws -> (URL, URLResponse) {
+        let collector = DownloadProgressCollector(progress: progress)
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 25
+        config.timeoutIntervalForResource = 300
+        config.httpAdditionalHeaders = ["Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8"]
+        config.waitsForConnectivity = false
+        let delegateSession = URLSession(configuration: config, delegate: collector, delegateQueue: nil)
+        defer { delegateSession.finishTasksAndInvalidate() }
+        return try await collector.run(session: delegateSession, request: request)
     }
 
     // MARK: - URL 工具
@@ -253,5 +301,111 @@ final class HTTPClient {
         var str = url.absoluteString
         if str.hasSuffix("/") { str.removeLast() }
         return str
+    }
+}
+
+// MARK: - 下载进度采集
+
+/// 把 URLSession 的 download 回调转成 async/await + 进度回调。
+///
+/// 只 resolve 一次：`didFinishDownloadingTo` 正常结束，`didCompleteWithError` 处理失败，
+/// 两者都可能被调用，所以用 `finished` 标志做幂等保护。
+final class DownloadProgressCollector: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
+    private let progress: (@Sendable (Double) -> Void)?
+    private var continuation: CheckedContinuation<(URL, URLResponse), Error>?
+    private var finished = false
+    private let lock = NSLock()
+    /// 上一次上报的进度，避免每个数据包都触发 UI 刷新
+    private var lastReported: Double = -1
+
+    init(progress: (@Sendable (Double) -> Void)?) {
+        self.progress = progress
+        super.init()
+    }
+
+    func run(session: URLSession, request: URLRequest) async throws -> (URL, URLResponse) {
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<(URL, URLResponse), Error>) in
+            lock.lock()
+            continuation = cont
+            lock.unlock()
+            session.downloadTask(with: request).resume()
+        }
+    }
+
+    /// 幂等地取出 continuation；已经有线程取过就返回 nil
+    private func takeContinuation() -> CheckedContinuation<(URL, URLResponse), Error>? {
+        lock.lock()
+        defer { lock.unlock() }
+        if finished { return nil }
+        finished = true
+        let c = continuation
+        continuation = nil
+        return c
+    }
+
+    // MARK: URLSessionDownloadDelegate
+
+    func urlSession(
+        _ session: URLSession,
+        downloadTask: URLSessionDownloadTask,
+        didWriteData bytesWritten: Int64,
+        totalBytesWritten: Int64,
+        totalBytesExpectedToWrite expected: Int64
+    ) {
+        guard let progress else { return }
+        let fraction: Double
+        if expected > 0 {
+            fraction = min(1.0, Double(totalBytesWritten) / Double(expected))
+        } else {
+            // 服务器没给 Content-Length（chunked），用渐近增长，避免一直停在 0
+            let written = Double(totalBytesWritten)
+            fraction = min(0.95, written / (written + 65536))
+        }
+        // 变化不足 1% 就不上报，减少主线程刷新次数
+        if fraction - lastReported < 0.01, fraction < 1.0 { return }
+        lastReported = fraction
+        progress(fraction)
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        downloadTask: URLSessionDownloadTask,
+        didFinishDownloadingTo location: URL
+    ) {
+        guard let continuation = takeContinuation() else { return }
+        // location 在回调返回后就被系统删掉，必须先搬到自己的临时文件
+        let dest = FileManager.default.temporaryDirectory
+            .appendingPathComponent("dl-\(UUID().uuidString)")
+        do {
+            try? FileManager.default.removeItem(at: dest)
+            try FileManager.default.moveItem(at: location, to: dest)
+        } catch {
+            continuation.resume(throwing: HTTPError.transport("临时文件保存失败：\(error.localizedDescription)"))
+            return
+        }
+        let response = downloadTask.response ?? URLResponse(
+            url: downloadTask.originalRequest?.url ?? URL(string: "about:blank")!,
+            mimeType: nil, expectedContentLength: 0, textEncodingName: nil)
+        continuation.resume(returning: (dest, response))
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        didCompleteWithError error: Error?
+    ) {
+        guard let error else {
+            // 没有 error：可能 didFinishDownloadingTo 已经处理过了，也可能没走到
+            if let continuation = takeContinuation() {
+                continuation.resume(throwing: HTTPError.transport("下载结束但没有拿到文件"))
+            }
+            return
+        }
+        guard let continuation = takeContinuation() else { return }
+        if (error as NSError).code == NSURLErrorCancelled {
+            continuation.resume(throwing: CancellationError())
+        } else {
+            continuation.resume(throwing: HTTPError.transport(error.localizedDescription))
+        }
     }
 }
