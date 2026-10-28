@@ -45,40 +45,60 @@ struct DiscoverView: View {
 
     var body: some View {
         NavigationStack {
-            mainContent
-                .navigationTitle(selectedSource?.name ?? "发现")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar { mainToolbar }
-                .searchable(text: $searchText, isPresented: $showSearch, prompt: "搜索书名 / 作者")
-                .onSubmit(of: .search) {
-                    Task { await performSearch() }
-                }
-                .overlay(alignment: .top) {
-                    if let importMessage {
-                        ImportBanner(message: importMessage, progress: importProgress)
-                            .padding(.top, 6)
-                    }
-                }
-                .alert("出错了", isPresented: errorPresented) {
-                    Button("好") { errorMessage = nil }
-                } message: {
-                    Text(errorMessage ?? "")
-                }
-                .task {
-                    if selectedSourceID == nil {
-                        selectedSourceID = enabledSources.first?.id
-                    }
-                    await refreshLibraryIndex()
-                    if isRuleSource {
-                        showSearch = true
-                    } else if entries.isEmpty {
-                        await browse(nil)
-                    }
-                }
-                .onChange(of: importMessage) { _, newValue in
-                    // 导入结束（成功或失败）后刷新已下载标记
-                    if newValue == nil { Task { await refreshLibraryIndex() } }
-                }
+            decoratedContent
+        }
+    }
+
+    /// 修饰符链拆成多段：单个表达式太长时 Swift 类型检查会超时
+    /// （error: the compiler is unable to type-check this expression in reasonable time）。
+    private var decoratedContent: some View {
+        searchableContent
+            .overlay(alignment: .top) { importBanner }
+            .alert("出错了", isPresented: errorPresented) {
+                Button("好") { errorMessage = nil }
+            } message: {
+                Text(errorMessage ?? "")
+            }
+            .task { await initialLoad() }
+            .onChange(of: importMessage) { _, newValue in
+                // 导入结束（成功或失败）后刷新已下载标记
+                if newValue == nil { Task { await refreshLibraryIndex() } }
+            }
+    }
+
+    private var searchableContent: some View {
+        titledContent
+            .searchable(text: $searchText, isPresented: $showSearch, prompt: "搜索书名 / 作者")
+            .onSubmit(of: .search) {
+                Task { await performSearch() }
+            }
+    }
+
+    private var titledContent: some View {
+        mainContent
+            .navigationTitle(selectedSource?.name ?? "发现")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { mainToolbar }
+    }
+
+    @ViewBuilder
+    private var importBanner: some View {
+        if let importMessage {
+            ImportBanner(message: importMessage, progress: importProgress)
+                .padding(.top, 6)
+        }
+    }
+
+    @MainActor
+    private func initialLoad() async {
+        if selectedSourceID == nil {
+            selectedSourceID = enabledSources.first?.id
+        }
+        await refreshLibraryIndex()
+        if isRuleSource {
+            showSearch = true
+        } else if entries.isEmpty {
+            await browse(nil)
         }
     }
 
