@@ -99,10 +99,11 @@ jobs:
           # CODE_SIGNING_ALLOWED=NO
           #   跳过所有签名，产出未签名 .app，后面用 Sideloadly 在 Windows 上重签。
           #
-          # 不使用 -destination
-          #   runner 上 iOS 平台包可能不完整，-destination 要求匹配设备/平台，
-          #   会直接报 "iOS 18.2 is not installed"。
-          #   只用 -sdk iphoneos 走 SDK 编译路径。
+          # 必须用 -destination 'generic/platform=iOS'
+          #   Xcode 16+ 在「没有连接设备、也没有可用模拟器运行时」的 runner 上，
+          #   只给 -sdk iphoneos 会直接报：
+          #     xcodebuild: error: Found no destinations for the scheme ... and action build.
+          #   generic 目标不依赖具体设备/模拟器，只需要 iOS SDK 存在。
           #
           # 图标不走 asset catalog（见 Info.plist 的 CFBundleIconFiles）
           #   原因：runner 上没有 iOS 模拟器运行时，Xcode 16.2+ 的 actool
@@ -113,7 +114,7 @@ jobs:
             -project NovelReader.xcodeproj \
             -scheme NovelReader \
             -configuration Release \
-            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
             -derivedDataPath "$RUNNER_TEMP/DerivedData" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
