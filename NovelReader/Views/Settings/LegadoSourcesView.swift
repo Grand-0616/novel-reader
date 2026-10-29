@@ -108,7 +108,6 @@ struct LegadoSourcesView: View {
                 Text("此操作不可撤销，导出的 JSON 备份仍可重新导入。")
             }
         }
-    }
 
     /// 内嵌时导航栏不可用，导入/导出入口改成页面顶部一行。
     private var embeddedBar: some View {
