@@ -48,6 +48,12 @@
 		AA0000000000000000000118 /* DiscoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000219 /* DiscoverView.swift */; };
 		AA0000000000000000000119 /* SourcesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000021A /* SourcesView.swift */; };
 		AA000000000000000000011A /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000021B /* SettingsView.swift */; };
+		AA0000000000000000000301 /* LegadoBookSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000403 /* LegadoBookSource.swift */; };
+		AA0000000000000000000304 /* LegadoEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000404 /* LegadoEngine.swift */; };
+		AA0000000000000000000305 /* LegadoJSRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000405 /* LegadoJSRuntime.swift */; };
+		AA0000000000000000000306 /* LegadoRule.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000406 /* LegadoRule.swift */; };
+		AA0000000000000000000307 /* LegadoStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000407 /* LegadoStore.swift */; };
+		AA0000000000000000000308 /* LegadoSourcesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000408 /* LegadoSourcesView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -94,6 +100,12 @@
 		AA000000000000000000021B /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		AA0000000000000000000302 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		AA0000000000000000000303 /* NovelReader.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = NovelReader.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA0000000000000000000403 /* LegadoBookSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegadoBookSource.swift; sourceTree = "<group>"; };
+		AA0000000000000000000404 /* LegadoEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegadoEngine.swift; sourceTree = "<group>"; };
+		AA0000000000000000000405 /* LegadoJSRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegadoJSRuntime.swift; sourceTree = "<group>"; };
+		AA0000000000000000000406 /* LegadoRule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegadoRule.swift; sourceTree = "<group>"; };
+		AA0000000000000000000407 /* LegadoStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegadoStore.swift; sourceTree = "<group>"; };
+		AA0000000000000000000408 /* LegadoSourcesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegadoSourcesView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -198,7 +210,9 @@
 				AA000000000000000000020C /* WebBookSource.swift */,
 				AA000000000000000000020D /* SourceRuleEngine.swift */,
 				AA000000000000000000020E /* SourceRegistry.swift */,
-			);
+			
+				AA0000000000000000000602 /* Legado */,
+);
 			path = Sources;
 			sourceTree = "<group>";
 		};
@@ -237,7 +251,9 @@
 			children = (
 				AA000000000000000000021A /* SourcesView.swift */,
 				AA000000000000000000021B /* SettingsView.swift */,
-			);
+			
+				AA0000000000000000000408 /* LegadoSourcesView.swift */,
+);
 			path = Settings;
 			sourceTree = "<group>";
 		};
@@ -266,6 +282,18 @@
 				AA000000000000000000101E /* Icons */,
 			);
 			path = Resources;
+			sourceTree = "<group>";
+		};
+		AA0000000000000000000602 /* Legado */ = {
+			isa = PBXGroup;
+			children = (
+				AA0000000000000000000403 /* LegadoBookSource.swift */,
+				AA0000000000000000000404 /* LegadoEngine.swift */,
+				AA0000000000000000000405 /* LegadoJSRuntime.swift */,
+				AA0000000000000000000406 /* LegadoRule.swift */,
+				AA0000000000000000000407 /* LegadoStore.swift */,
+			);
+			path = Legado;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -378,7 +406,14 @@
 				AA0000000000000000000118 /* DiscoverView.swift in Sources */,
 				AA0000000000000000000119 /* SourcesView.swift in Sources */,
 				AA000000000000000000011A /* SettingsView.swift in Sources */,
-			);
+			
+				AA0000000000000000000301 /* LegadoBookSource.swift in Sources */,
+				AA0000000000000000000304 /* LegadoEngine.swift in Sources */,
+				AA0000000000000000000305 /* LegadoJSRuntime.swift in Sources */,
+				AA0000000000000000000306 /* LegadoRule.swift in Sources */,
+				AA0000000000000000000307 /* LegadoStore.swift in Sources */,
+				AA0000000000000000000308 /* LegadoSourcesView.swift in Sources */,
+);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */

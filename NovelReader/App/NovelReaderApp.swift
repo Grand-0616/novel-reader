@@ -12,6 +12,7 @@ import SwiftData
 struct NovelReaderApp: App {
     @State private var appState = AppState()
     @State private var registry = SourceRegistry.shared
+    @State private var legadoStore = LegadoStore()
 
     let container: ModelContainer
 
@@ -41,6 +42,7 @@ struct NovelReaderApp: App {
             RootView()
                 .environment(appState)
                 .environment(registry)
+                .environment(legadoStore)
                 .modelContainer(container)
                 .onOpenURL { url in
                     appState.handleIncomingURL(url)
@@ -67,7 +69,7 @@ struct RootView: View {
                 .tabItem { Label("发现", systemImage: "magnifyingglass") }
                 .tag(AppState.Tab.discover)
 
-            SourcesView()
+            LegadoSourcesView()
                 .tabItem { Label("书源", systemImage: "network") }
                 .tag(AppState.Tab.sources)
 
