@@ -15,6 +15,7 @@ struct LegadoSourcesView: View {
     var embedded: Bool = false
 
     @Environment(LegadoStore.self) private var store
+    @Environment(SourceRegistry.self) private var registry
     @Environment(\.omniSkin) private var skin
 
     @State private var keyword = ""
@@ -70,6 +71,17 @@ struct LegadoSourcesView: View {
             .toolbar { toolbarContent }
             .sheet(isPresented: $showPasteSheet) { pasteSheet }
             .sheet(isPresented: $showURLSheet) { urlSheet }
+            .sheet(item: $remoteSheet) { target in
+                switch target.mode {
+                case .browse:
+                    DiscoverView(initialSourceID: target.remote.id, showsClose: true)
+                case .edit, .create:
+                    NavigationStack {
+                        SourceEditorView(source: target.remote,
+                                         isNew: target.mode == .create)
+                    }
+                }
+            }
             .sheet(isPresented: $showLegacySources) {
                 SourcesView()
                     .environment(SourceRegistry.shared)
@@ -152,6 +164,15 @@ struct LegadoSourcesView: View {
                 } label: {
                     Label("从网址导入", systemImage: "link")
                 }
+                Divider()
+                Button {
+                    remoteSheet = RemoteSheetTarget(
+                        remote: RemoteSource.makeOPDS(name: "NAS OPDS 书库",
+                                                      url: "http://192.168.1.100:8083/opds"),
+                        mode: .create)
+                } label: {
+                    Label("添加 NAS / OPDS 源", systemImage: "externaldrive.connected.to.line.below")
+                }
                 if !store.sources.isEmpty {
                     Divider()
                     if let url = exportURL {
@@ -218,14 +239,185 @@ struct LegadoSourcesView: View {
                     }
                 }
             } header: {
-                Text("共 \(filtered.count) 个")
+                Text("Legado 书源 · \(filtered.count) 个")
             } footer: {
-                Text("书源来自 Legado（阅读）生态，导入后可搜索、看目录、读正文。")
+                Text("来自 Legado（阅读）生态，导入后可搜索、看目录、读正文。")
             }
+
+            remoteSection
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(skin.background)
+    }
+
+    // MARK: - 网络源（NAS / OPDS / WebDAV / 规则站）
+
+    /// 与 Legado 书源并列的第二类来源：局域网里的 NAS、OPDS 书库、
+    /// WebDAV 目录、自定义规则站。它们不依赖 Legado 规则，走独立的连接层。
+    private var remoteSection: some View {
+        Section {
+            if registry.sources.isEmpty {
+                Text("还没有网络源。添加 NAS 的 OPDS 书库、HTTP 目录索引或 WebDAV 地址后，可以在这里浏览并导入书目。")
+                    .font(.footnote)
+                    .foregroundStyle(skin.textSecondary)
+            } else {
+                ForEach(registry.sources) { remote in
+                    Button {
+                        remoteSheet = RemoteSheetTarget(remote: remote, mode: .browse)
+                    } label: {
+                        remoteRow(remote)
+                    }
+                    .buttonStyle(.plain)
+                    .listRowBackground(skin.surface)
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        Button(role: .destructive) {
+                            registry.remove(remote)
+                        } label: {
+                            Label("删除", systemImage: "trash")
+                        }
+                        Button {
+                            remoteSheet = RemoteSheetTarget(remote: remote, mode: .edit)
+                        } label: {
+                            Label("编辑", systemImage: "slider.horizontal.3")
+                        }
+                        .tint(OmniPalette.gold)
+                        Button {
+                            Task { await checkRemote(remote) }
+                        } label: {
+                            Label("测试", systemImage: "antenna.radiowaves.left.and.right")
+                        }
+                        .tint(OmniPalette.blue)
+                    }
+                    .swipeActions(edge: .leading) {
+                        Button {
+                            var copy = remote
+                            copy.isEnabled.toggle()
+                            registry.update(copy)
+                        } label: {
+                            Label(remote.isEnabled ? "停用" : "启用",
+                                  systemImage: remote.isEnabled ? "pause.circle" : "play.circle")
+                        }
+                        .tint(remote.isEnabled ? .orange : .green)
+                    }
+                }
+            }
+
+            addRemoteMenu
+                .listRowBackground(skin.surface)
+        } header: {
+            Text("网络源 · NAS / OPDS / WebDAV · \(registry.sources.count) 个")
+        } footer: {
+            Text("点一行直接浏览该源的书目目录；左滑可编辑地址、测试连通性。局域网直连，不需要外网。")
+        }
+    }
+
+    private func remoteRow(_ remote: RemoteSource) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: remote.kind.symbolName)
+                .font(.body)
+                .foregroundStyle(remote.isEnabled ? skin.accent : skin.textSecondary)
+                .padding(.top, 2)
+
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(remote.name)
+                        .font(.body)
+                        .foregroundStyle(skin.textPrimary)
+                        .lineLimit(1)
+                    Text(remote.kind.displayName)
+                        .font(.caption2)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 1)
+                        .background(skin.accent.opacity(0.16), in: Capsule())
+                        .foregroundStyle(skin.accent)
+                    if !remote.isEnabled {
+                        Text("已停用")
+                            .font(.caption2)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 1)
+                            .background(skin.surfaceAlt, in: Capsule())
+                            .foregroundStyle(skin.textSecondary)
+                    }
+                }
+                Text(remote.baseURL)
+                    .font(.caption2)
+                    .foregroundStyle(skin.textSecondary)
+                    .lineLimit(1)
+                if !remote.lastCheckMessage.isEmpty {
+                    Text(remote.lastCheckMessage)
+                        .font(.caption2)
+                        .foregroundStyle(remote.lastCheckOK ? OmniPalette.success : OmniPalette.warning)
+                        .lineLimit(1)
+                }
+            }
+
+            Spacer(minLength: 6)
+
+            if checkingRemote == remote.id {
+                ProgressView().scaleEffect(0.7)
+            } else {
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundStyle(skin.textSecondary)
+            }
+        }
+        .contentShape(Rectangle())
+    }
+
+    private var addRemoteMenu: some View {
+        Menu {
+            Button {
+                remoteSheet = RemoteSheetTarget(
+                    remote: RemoteSource.makeOPDS(name: "NAS OPDS 书库",
+                                                  url: "http://192.168.1.100:8083/opds"),
+                    mode: .create)
+            } label: {
+                Label("OPDS 书库（calibre-web / Komga / Kavita）", systemImage: "books.vertical")
+            }
+            Button {
+                remoteSheet = RemoteSheetTarget(
+                    remote: RemoteSource.makeHTTPDir(name: "NAS HTTP 目录",
+                                                     url: "http://192.168.1.100:8080/books/"),
+                    mode: .create)
+            } label: {
+                Label("HTTP 目录索引", systemImage: "folder")
+            }
+            Button {
+                remoteSheet = RemoteSheetTarget(
+                    remote: RemoteSource.makeWebDAV(name: "NAS WebDAV",
+                                                    url: "http://192.168.1.100:5005/books",
+                                                    user: "", pass: ""),
+                    mode: .create)
+            } label: {
+                Label("WebDAV（群晖 / 威联通）", systemImage: "network")
+            }
+            Button {
+                var s = RemoteSource(name: "在线书源", kind: .rules, baseURL: "https://")
+                s.isEnabled = true
+                remoteSheet = RemoteSheetTarget(remote: s, mode: .create)
+            } label: {
+                Label("规则书源（自定义站点）", systemImage: "text.magnifyingglass")
+            }
+        } label: {
+            Label("添加网络源", systemImage: "plus.circle.fill")
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(skin.accent)
+        }
+    }
+
+    private func checkRemote(_ remote: RemoteSource) async {
+        checkingRemote = remote.id
+        defer { checkingRemote = nil }
+        do {
+            let msg = try await OPDSSource.ping(source: remote)
+            registry.markCheck(remote.id, ok: true, message: msg)
+            alertMessage = "\(remote.name)：\(msg)"
+        } catch {
+            registry.markCheck(remote.id, ok: false, message: error.localizedDescription)
+            alertMessage = "\(remote.name)：\(error.localizedDescription)"
+        }
+        showAlert = true
     }
 
     private var summaryRow: some View {
@@ -432,7 +624,7 @@ struct LegadoSourcesView: View {
                 Button {
                     showLegacySources = true
                 } label: {
-                    Label("NAS / OPDS 源", systemImage: "externaldrive.connected.to.line.below")
+                    Label("网络源完整管理页", systemImage: "externaldrive.connected.to.line.below")
                 }
                 Divider()
                 Button(role: .destructive) {
@@ -445,6 +637,9 @@ struct LegadoSourcesView: View {
             }
         }
     }
+
+    @State private var remoteSheet: RemoteSheetTarget?
+    @State private var checkingRemote: UUID?
 
     @State private var showClearConfirm = false
     @State private var showLegacySources = false
@@ -667,4 +862,22 @@ struct LegadoSourceDetailView: View {
                 .foregroundStyle(ok ? OmniPalette.success : skin.textSecondary)
         }
     }
+}
+
+// MARK: - 网络源弹窗目标
+
+/// 网络源这一栏既要点进去浏览，又要能进编辑页。
+/// 用一个 sheet 承载两种用途，避免同视图挂两个 sheet(item:) 时只有最后一个生效。
+struct RemoteSheetTarget: Identifiable {
+
+    enum Mode {
+        case browse
+        case edit
+        case create
+    }
+
+    let remote: RemoteSource
+    let mode: Mode
+
+    var id: String { "\(mode)-\(remote.id.uuidString)" }
 }

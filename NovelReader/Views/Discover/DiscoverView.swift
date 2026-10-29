@@ -20,6 +20,9 @@ struct DiscoverView: View {
     @Environment(\.omniSkin) private var skin
 
     @State private var selectedSourceID: UUID?
+
+    /// 从书源页点某个网络源进来时，直接定位到它
+    var initialSourceID: UUID? = nil
     @State private var entries: [SourceEntry] = []
     @State private var path: [String] = []
     @State private var currentURL: String?
@@ -105,7 +108,7 @@ struct DiscoverView: View {
     @MainActor
     private func initialLoad() async {
         if selectedSourceID == nil {
-            selectedSourceID = enabledSources.first?.id
+            selectedSourceID = initialSourceID ?? enabledSources.first?.id
         }
         await refreshLibraryIndex()
         if isRuleSource {

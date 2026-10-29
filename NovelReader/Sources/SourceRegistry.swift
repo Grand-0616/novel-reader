@@ -20,10 +20,19 @@ final class SourceRegistry {
 
     private init() {
         load()
-        if sources.isEmpty {
-            sources = SourceRegistry.builtinSuggestions()
-            save()
+        prunePlaceholders()
+    }
+
+    /// 旧版本首次启动会写入 4 条占位示例（192.168.1.100 / example.com）。
+    /// 这些地址对用户没有意义，未启用的一律清掉，避免书源页凭空多出几条。
+    private func prunePlaceholders() {
+        let hosts: Set<String> = ["192.168.1.100", "example.com"]
+        let before = sources.count
+        sources.removeAll { s in
+            guard !s.isEnabled, let host = URL(string: s.baseURL)?.host else { return false }
+            return hosts.contains(host)
         }
+        if sources.count != before { save() }
     }
 
     // MARK: - 内置建议配置（地址留空，用户填自己的 NAS）
