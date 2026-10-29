@@ -18,25 +18,25 @@ import Foundation
 
 /// 把 "123" / 123 / 123.0 都读成 Int64；失败返回 nil。
 enum LegadoDecode {
-    static func int64(_ c: KeyedDecodingContainer<some CodingKey>, _ k: some CodingKey) -> Int64? {
+    static func int64<K: CodingKey>(_ c: KeyedDecodingContainer<K>, _ k: K) -> Int64? {
         if let v = try? c.decodeIfPresent(Int64.self, forKey: k) { return v }
         if let v = try? c.decodeIfPresent(Int.self, forKey: k) { return Int64(v) }
         if let v = try? c.decodeIfPresent(Double.self, forKey: k) { return Int64(v) }
         if let s = try? c.decodeIfPresent(String.self, forKey: k) {
-            return Int64(s.trimmingCharacters(in: .whitespaces))
+            return Int64(s.trimmingCharacters(in: CharacterSet.whitespaces))
         }
         return nil
     }
 
-    static func int(_ c: KeyedDecodingContainer<some CodingKey>, _ k: some CodingKey) -> Int? {
+    static func int<K: CodingKey>(_ c: KeyedDecodingContainer<K>, _ k: K) -> Int? {
         int64(c, k).map { Int($0) }
     }
 
-    static func bool(_ c: KeyedDecodingContainer<some CodingKey>, _ k: some CodingKey) -> Bool? {
+    static func bool<K: CodingKey>(_ c: KeyedDecodingContainer<K>, _ k: K) -> Bool? {
         if let v = try? c.decodeIfPresent(Bool.self, forKey: k) { return v }
         if let n = int(c, k) { return n != 0 }
         if let s = try? c.decodeIfPresent(String.self, forKey: k) {
-            let t = s.trimmingCharacters(in: .whitespaces).lowercased()
+            let t = s.trimmingCharacters(in: CharacterSet.whitespaces).lowercased()
             if ["true", "1", "yes", "on"].contains(t) { return true }
             if ["false", "0", "no", "off"].contains(t) { return false }
         }
@@ -44,7 +44,7 @@ enum LegadoDecode {
     }
 
     /// 空字符串归一成 nil，避免规则里出现 "" 被判成"有规则但匹配不到"
-    static func string(_ c: KeyedDecodingContainer<some CodingKey>, _ k: some CodingKey) -> String? {
+    static func string<K: CodingKey>(_ c: KeyedDecodingContainer<K>, _ k: K) -> String? {
         guard let s = try? c.decodeIfPresent(String.self, forKey: k) else { return nil }
         return s.isEmpty ? nil : s
     }
@@ -134,6 +134,8 @@ struct LegadoExploreRule: Codable, Equatable {
         coverUrl = LegadoDecode.string(c, .coverUrl)
         wordCount = LegadoDecode.string(c, .wordCount)
     }
+
+    var isUsable: Bool { !(bookList ?? "").isEmpty }
 }
 
 // MARK: - 详情规则
@@ -158,7 +160,7 @@ struct LegadoBookInfoRule: Codable, Equatable {
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.`init` = LegadoDecode.string(c, .`init`)
+        self.`init` = LegadoDecode.string(c, CodingKeys.`init`)
         name = LegadoDecode.string(c, .name)
         author = LegadoDecode.string(c, .author)
         intro = LegadoDecode.string(c, .intro)

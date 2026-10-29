@@ -45,7 +45,7 @@ final class LegadoEngine {
         guard let rule = source.ruleSearch, rule.isUsable else {
             throw LegadoError.noSearchRule
         }
-        let template = source.searchUrl.trimmingCharacters(in: .whitespacesAndNewlines)
+        let template = (source.searchUrl ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !template.isEmpty else { throw LegadoError.noSearchRule }
 
         let ctx = makeContext(source)
@@ -57,7 +57,7 @@ final class LegadoEngine {
         let (content, finalURL) = try await fetch(request, ctx: ctx)
         ctx.currentURL = finalURL
 
-        let items = bookContents(rule: rule.bookList, content: content, ctx: ctx)
+        let items = bookContents(rule.bookList, content: content, ctx: ctx)
         return items.compactMap { item in
             let name = value(rule.name, item, ctx)
             guard !name.isEmpty else { return nil }
@@ -117,7 +117,7 @@ final class LegadoEngine {
     /// 2. JSON 数组 `[{"title":"..","url":".."}]`
     /// 3. 单个地址
     func exploreEntries(_ source: LegadoBookSource) -> [LegadoExploreEntry] {
-        let raw = source.exploreUrl.trimmingCharacters(in: .whitespacesAndNewlines)
+        let raw = (source.exploreUrl ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !raw.isEmpty else { return [] }
 
         if raw.hasPrefix("[") || raw.hasPrefix("{"),
@@ -200,7 +200,7 @@ final class LegadoEngine {
         let (content, finalURL) = try await fetch(request, ctx: ctx)
         ctx.currentURL = finalURL
 
-        let items = bookContents(rule: rule.bookList, content: content, ctx: ctx)
+        let items = bookContents(rule.bookList, content: content, ctx: ctx)
         return items.compactMap { item in
             let name = value(rule.name, item, ctx)
             guard !name.isEmpty else { return nil }
@@ -280,7 +280,7 @@ final class LegadoEngine {
             let (content, finalURL) = try await fetch(request, ctx: ctx)
             ctx.currentURL = finalURL
 
-            let nodes = bookContents(rule: rule.chapterList, content: content, ctx: ctx)
+            let nodes = bookContents(rule.chapterList, content: content, ctx: ctx)
             for node in nodes {
                 let title = value(rule.chapterName, node, ctx)
                 let url = value(rule.chapterUrl, node, ctx)

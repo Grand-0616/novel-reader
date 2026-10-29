@@ -31,7 +31,7 @@ struct LegadoSourcesView: View {
             list = list.filter {
                 $0.bookSourceName.localizedCaseInsensitiveContains(key)
                 || $0.bookSourceUrl.localizedCaseInsensitiveContains(key)
-                || $0.bookSourceGroup.localizedCaseInsensitiveContains(key)
+                || ($0.bookSourceGroup ?? "").localizedCaseInsensitiveContains(key)
             }
         }
         return list
@@ -211,12 +211,12 @@ struct LegadoSourcesView: View {
                     }
                 }
                 HStack(spacing: 6) {
-                    Text(source.type.label)
+                    Text(source.type.displayName)
                         .font(.caption2)
                         .foregroundStyle(.secondary)
-                    if !source.bookSourceGroup.isEmpty {
+                    if let group = source.bookSourceGroup, !group.isEmpty {
                         Text("·").font(.caption2).foregroundStyle(.secondary)
-                        Text(source.bookSourceGroup)
+                        Text(group)
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
@@ -450,12 +450,12 @@ struct LegadoSourceDetailView: View {
         List {
             Section("基本信息") {
                 labeled("名称", current.bookSourceName)
-                labeled("类型", current.type.label)
-                labeled("分组", current.bookSourceGroup.isEmpty ? "未分组" : current.bookSourceGroup)
+                labeled("类型", current.type.displayName)
+                labeled("分组", current.bookSourceGroup.flatMap { $0.isEmpty ? nil : $0 } ?? "未分组")
                 labeled("地址", current.bookSourceUrl, mono: true)
                 labeled("状态", current.readiness.label)
-                if !current.bookSourceComment.isEmpty {
-                    labeled("备注", current.bookSourceComment)
+                if let comment = current.bookSourceComment, !comment.isEmpty {
+                    labeled("备注", comment)
                 }
             }
 

@@ -142,7 +142,7 @@ enum LegadoJSON {
                     var out: [Any] = []
                     for node in current { collectRecursive(node, key: key, into: &out) }
                     current = out
-                    i = expr.index(after, offsetBy: key.count)
+                    i = expr.index(i, offsetBy: key.count)
                 } else {
                     let after = expr.index(after: i)
                     if after < expr.endIndex, expr[after] == "*" {
@@ -154,7 +154,7 @@ enum LegadoJSON {
                             i = after
                         } else {
                             current = current.compactMap { child($0, key: key) }
-                            i = expr.index(after, offsetBy: key.count)
+                            i = expr.index(i, offsetBy: key.count)
                         }
                     }
                 }
@@ -179,7 +179,7 @@ enum LegadoJSON {
                 let key = readIdent(expr, from: i)
                 if key.isEmpty { i = expr.index(after: i); continue }
                 current = current.compactMap { child($0, key: key) }
-                i = expr.index(after, offsetBy: key.count)
+                i = expr.index(i, offsetBy: key.count)
             }
 
             if current.isEmpty { return [] }
@@ -633,7 +633,7 @@ enum LegadoRule {
                 case "contains": if let a = arg { pseudos.append(.contains(a.trimmingCharacters(in: CharacterSet(charactersIn: " \"'")))) }
                 default:
                     // 不认识的伪类原样保留（交给 CSSRule 当标签名的一部分，通常匹配不到）
-                    out.append(selector[i..<j])
+                    out.append(String(selector[i..<j]))
                     i = j
                     continue
                 }
