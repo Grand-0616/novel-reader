@@ -25,6 +25,9 @@ struct LibraryView: View {
     @State private var importMessage: String?
     @State private var errorMessage: String?
     @State private var selectedBook: Book?
+    /// 点击书籍直接进阅读器，不再先进详情页
+    @State private var readingBook: Book?
+    @State private var shelfKind: ShelfKind = .novel
     @State private var showSettings = false
     @State private var groupFilter: ShelfGroup = .all
 
@@ -37,6 +40,26 @@ struct LibraryView: View {
     }
 
     /// 书架分组，对齐云书阁的书架分组条
+    /// 顶部「小说 / 漫画 / 有声书」三段切换，按文件格式归类
+    enum ShelfKind: String, CaseIterable, Identifiable {
+        case novel = "小说"
+        case comic = "漫画"
+        case audio = "有声书"
+
+        var id: String { rawValue }
+
+        var extensions: Set<String> {
+            switch self {
+            case .novel:
+                return ["txt", "epub", "mobi", "azw", "azw3", "fb2", "html", "htm", "md", "text"]
+            case .comic:
+                return ["cbz", "cbr", "cb7", "cbt", "zip", "rar", "7z", "tar"]
+            case .audio:
+                return ["mp3", "m4a", "m4b", "aac", "flac", "wav", "ogg", "opus"]
+            }
+        }
+    }
+
     enum ShelfGroup: String, CaseIterable, Identifiable {
         case all = "全部"
         case reading = "在读"
@@ -52,6 +75,15 @@ struct LibraryView: View {
             list = list.filter {
                 $0.title.lowercased().contains(q) || $0.author.lowercased().contains(q)
             }
+        }
+        // 先按顶部三段切换过滤
+        let allowed = shelfKind.extensions
+        list = list.filter { book in
+            let fmt = book.fileFormat.lowercased()
+            let ext = fmt.isEmpty
+                ? ((book.localFileRelativePath as NSString?)?.pathExtension.lowercased() ?? "")
+                : fmt
+            return allowed.contains(ext)
         }
         switch groupFilter {
         case .all:
@@ -81,66 +113,18 @@ struct LibraryView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
-                if books.isEmpty {
-                    emptyState
-                } else {
-                    bookGrid
+            VStack(spacing: 0) {
+                header
+                Group {
+                    if books.isEmpty {
+                        emptyState
+                    } else {
+                        bookGrid
+                    }
                 }
             }
             .background(skin.background)
-            .navigationTitle("书架")
-            .toolbarBackground(skin.surface, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
-            .searchable(text: $searchText, prompt: "搜索书名或作者")
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Menu {
-                        Picker("排序", selection: $sortMode) {
-                            ForEach(SortMode.allCases) { mode in
-                                Text(mode.rawValue).tag(mode)
-                            }
-                        }
-                    } label: {
-                        Image(systemName: "arrow.up.arrow.down")
-                    }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showSettings = true
-                    } label: {
-                        Image(systemName: "person.crop.circle")
-                    }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        Button {
-                            showImporter = true
-                        } label: {
-                            Label("从「文件」导入", systemImage: "folder.badge.plus")
-                        }
-                        Button {
-                            showURLSheet = true
-                        } label: {
-                            Label("从链接导入", systemImage: "link")
-                        }
-                        Button {
-                            Task { await importFromInbox() }
-                        } label: {
-                            Label("扫描 Inbox 目录", systemImage: "tray.and.arrow.down")
-                        }
-                        Divider()
-                        Button {
-                            selectedBook = nil
-                            appState.selectedTab = .discover
-                        } label: {
-                            Label("去书源找书", systemImage: "magnifyingglass")
-                        }
-                    } label: {
-                        Image(systemName: "plus.circle.fill")
-                    }
-                }
-            }
+            .toolbar(.hidden, for: .navigationBar)
             .fileImporter(
                 isPresented: $showImporter,
                 allowedContentTypes: Self.importTypes,
@@ -150,6 +134,9 @@ struct LibraryView: View {
             }
             .sheet(isPresented: $showURLSheet) {
                 URLImportSheet()
+            }
+            .fullScreenCover(item: $readingBook) { book in
+                ReaderView(book: book)
             }
             .sheet(item: $selectedBook) { book in
                 BookDetailView(book: book)
@@ -187,19 +174,232 @@ struct LibraryView: View {
         return types
     }
 
+    // MARK: - 顶栏
+
+    /// 云书阁式顶栏：左 AI 助手圆钮、中间三段切换、右账户圆钮
+    private var header: some View {
+        HStack(spacing: 10) {
+            Button {
+                appState.selectedTab = .discover
+            } label: {
+                ZStack {
+                    Circle().fill(skin.surface)
+                    Circle().strokeBorder(skin.separator, lineWidth: 0.5)
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(Color(hex: 0x4CC98A))
+                }
+                .frame(width: 38, height: 38)
+            }
+            .buttonStyle(.plain)
+
+            Spacer(minLength: 2)
+
+            HStack(spacing: 22) {
+                ForEach(ShelfKind.allCases) { kind in
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.18)) { shelfKind = kind }
+                    } label: {
+                        VStack(spacing: 5) {
+                            Text(kind.rawValue)
+                                .font(.system(size: 16,
+                                              weight: shelfKind == kind ? .semibold : .regular))
+                                .foregroundStyle(shelfKind == kind ? skin.textPrimary : skin.textSecondary)
+                            Capsule()
+                                .fill(shelfKind == kind ? skin.accent : Color.clear)
+                                .frame(width: 22, height: 2.5)
+                        }
+                        .fixedSize()
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            Spacer(minLength: 2)
+
+            Menu {
+                Button { showSettings = true } label: { Label("设置", systemImage: "gearshape") }
+                Button { showImporter = true } label: { Label("从「文件」导入", systemImage: "folder.badge.plus") }
+                Button { showURLSheet = true } label: { Label("从链接导入", systemImage: "link") }
+                Button { Task { await importFromInbox() } } label: {
+                    Label("扫描 Inbox 目录", systemImage: "tray.and.arrow.down")
+                }
+            } label: {
+                ZStack {
+                    Circle().fill(skin.surface)
+                    Circle().strokeBorder(skin.separator, lineWidth: 0.5)
+                    Image(systemName: "person.fill")
+                        .font(.system(size: 15))
+                        .foregroundStyle(skin.textSecondary)
+                }
+                .frame(width: 38, height: 38)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 4)
+        .padding(.bottom, 8)
+    }
+
     // MARK: - 网格
 
     private var bookGrid: some View {
         ScrollView {
-            VStack(spacing: 18) {
-                continueSection
-                groupBar
+            VStack(spacing: 22) {
+                readingNowSection
+                allShelfSection
+            }
+            .padding(.top, 6)
+            .padding(.bottom, 96)
+        }
+        .background(skin.background)
+    }
 
+    // MARK: - 阅读中
+
+    @ViewBuilder
+    private var readingNowSection: some View {
+        let candidates = filteredBooks
+            .filter { $0.readingProgress > 0.001 && $0.readingProgress < 0.999 }
+            .sorted { ($0.lastOpenedAt ?? .distantPast) > ($1.lastOpenedAt ?? .distantPast) }
+
+        if let book = candidates.first,
+           searchText.trimmingCharacters(in: .whitespaces).isEmpty,
+           groupFilter == .all {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Text("阅读中")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(skin.textPrimary)
+                    Spacer()
+                    Button {
+                        readingBook = book
+                    } label: {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(skin.textSecondary)
+                            .frame(width: 28, height: 28)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 16)
+
+                Button {
+                    readingBook = book
+                } label: {
+                    readingNowCard(book)
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 16)
+            }
+        }
+    }
+
+    private func readingNowCard(_ book: Book) -> some View {
+        HStack(alignment: .top, spacing: 14) {
+            coverThumb(book, width: 76, height: 104)
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(book.title)
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(skin.textPrimary)
+                    .lineLimit(1)
+                Text(book.displayAuthor)
+                    .font(.system(size: 12))
+                    .foregroundStyle(skin.textSecondary)
+                    .lineLimit(1)
+                Text("读到 \(chapterTitle(of: book))")
+                    .font(.system(size: 12))
+                    .foregroundStyle(skin.textSecondary)
+                    .lineLimit(1)
+                Text("上次阅读 · \(relativeTime(book.lastOpenedAt))")
+                    .font(.system(size: 11))
+                    .foregroundStyle(skin.textSecondary.opacity(0.8))
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 0)
+
+            Text("\(Int(book.readingProgress * 100))%")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(skin.accent)
+                .monospacedDigit()
+        }
+        .padding(14)
+        .background {
+            RoundedRectangle(cornerRadius: 16, style: .continuous).fill(skin.surface)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(skin.separator, lineWidth: 0.5)
+        }
+    }
+
+    private func chapterTitle(of book: Book) -> String {
+        let list = book.chapters.sorted { $0.index < $1.index }
+        let idx = book.positionChapterIndex
+        guard idx >= 0, idx < list.count else { return "第一章" }
+        return list[idx].title
+    }
+
+    private func relativeTime(_ date: Date?) -> String {
+        guard let date else { return "尚未阅读" }
+        let seconds = Date().timeIntervalSince(date)
+        if seconds < 60 { return "刚刚" }
+        if seconds < 3600 { return "\(Int(seconds / 60)) 分钟前" }
+        if seconds < 86_400 { return "\(Int(seconds / 3600)) 小时前" }
+        return "\(Int(seconds / 86_400)) 天前"
+    }
+
+    // MARK: - 全部书架
+
+    private var allShelfSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("全部书架")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(skin.textPrimary)
+                Spacer()
+                Menu {
+                    Picker("排序", selection: $sortMode) {
+                        ForEach(SortMode.allCases) { mode in
+                            Text(mode.rawValue).tag(mode)
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.up.arrow.down")
+                            .font(.system(size: 11, weight: .medium))
+                        Text(sortMode.rawValue)
+                            .font(.system(size: 12))
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 10, weight: .semibold))
+                    }
+                    .foregroundStyle(skin.accent)
+                }
+            }
+            .padding(.horizontal, 16)
+
+            groupBar
+
+            if filteredBooks.isEmpty {
+                VStack(spacing: 8) {
+                    Image(systemName: "books.vertical")
+                        .font(.system(size: 26, weight: .light))
+                        .foregroundStyle(skin.textSecondary.opacity(0.5))
+                    Text("这个分类下还没有书")
+                        .font(.system(size: 13))
+                        .foregroundStyle(skin.textSecondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 44)
+            } else {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 104, maximum: 140), spacing: 16)],
                           spacing: 20) {
                     ForEach(filteredBooks) { book in
                         Button {
-                            selectedBook = book
+                            readingBook = book
                         } label: {
                             OmniBookCard(
                                 title: book.title,
@@ -212,13 +412,18 @@ struct LibraryView: View {
                         .buttonStyle(.plain)
                         .contextMenu {
                             Button {
+                                selectedBook = book
+                            } label: {
+                                Label("书籍详情", systemImage: "info.circle")
+                            }
+                            Button {
                                 book.isPinned.toggle()
                                 try? modelContext.save()
                             } label: {
                                 Label(book.isPinned ? "取消置顶" : "置顶", systemImage: "pin")
                             }
                             if let store = appState.store {
-                                Button {
+                                Button(role: .destructive) {
                                     store.delete(book: book)
                                 } label: {
                                     Label("删除", systemImage: "trash")
@@ -229,10 +434,7 @@ struct LibraryView: View {
                 }
                 .padding(.horizontal, 16)
             }
-            .padding(.top, 8)
-            .padding(.bottom, 40)
         }
-        .background(skin.background)
     }
 
     // MARK: - 继续阅读

@@ -33,7 +33,7 @@ struct ReaderLayout: Equatable {
     let showsFooter: Bool
 
     /// 页码行高度
-    static let footerHeight: CGFloat = 22
+    static let footerHeight: CGFloat = 20
 
     init(size: CGSize, insets: EdgeInsets, marginH ratioH: Double, marginV ratioV: Double,
          showsFooter: Bool = true) {
@@ -44,11 +44,13 @@ struct ReaderLayout: Equatable {
         self.showsFooter = showsFooter
     }
 
-    /// 顶部起排位置：安全区 + 上下边距
-    var topInset: CGFloat { max(insets.top, 20) + marginV }
-    /// 底部收排位置：安全区 + 上下边距 + 页码行
+    /// 顶部起排位置：安全区 + 一小段边距。
+    /// 边距只按 30% 参与，剩下的空间全部留给正文——云书阁的正文是贴着
+    /// 状态栏下方起排的，不留大片空白。
+    var topInset: CGFloat { max(insets.top, 20) + marginV * 0.30 }
+    /// 底部收排位置：安全区 + 一小段边距 + 页码行
     var bottomInset: CGFloat {
-        max(insets.bottom, 16) + marginV + (showsFooter ? Self.footerHeight : 0)
+        max(insets.bottom, 16) + marginV * 0.30 + (showsFooter ? Self.footerHeight : 0)
     }
 
     /// 正文可排版区域
@@ -81,6 +83,9 @@ struct ReaderView: View {
     @State private var showSettings = false
     @State private var showChapterList = false
     @State private var paginationSize: CGSize = .zero
+    @State private var isBookmarked = false
+    @State private var sessionStart: Date?
+    @State private var hint: String?
     /// 当前生效的布局度量，供边距变化时重算尺寸
     @State private var currentLayout: ReaderLayout?
     @State private var isLoading = true
@@ -159,6 +164,8 @@ struct ReaderView: View {
             .onAppear {
                 applyLayout(layout)
                 loadInitial()
+                refreshBookmark()
+                sessionStart = Date()
             }
             .onChange(of: layout) { _, newLayout in
                 // 旋转 / 分屏 / 安全区变化：重排并回到原来的字符位置
@@ -166,10 +173,23 @@ struct ReaderView: View {
                 repaginate(keepingOffset: currentOffsetInPage)
             }
         }
-        .statusBarHidden(!showChrome)
-        .persistentSystemOverlays(showChrome ? .automatic : .hidden)
+        // 状态栏常显：隐藏工具栏时如果连状态栏一起藏掉，顶部那一截
+        // 安全区就变成纯空白，看起来像"上下各空一块"。
+        .statusBarHidden(false)
+        .persistentSystemOverlays(.automatic)
         .overlay(alignment: .top) { if showChrome { topBar } }
         .overlay(alignment: .bottom) { if showChrome { bottomBar } }
+        .overlay(alignment: .center) {
+            if let hint {
+                Text(hint)
+                    .font(.system(size: 13))
+                    .foregroundStyle(skin.background)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(Capsule().fill(skin.textPrimary.opacity(0.9)))
+                    .transition(.opacity)
+            }
+        }
         .sheet(isPresented: $showSettings) {
             ReaderSettingsPanel()
         }
@@ -181,6 +201,10 @@ struct ReaderView: View {
         }
         .onDisappear {
             saveProgress()
+            if let start = sessionStart {
+                ReadingStats.record(seconds: Date().timeIntervalSince(start))
+                sessionStart = nil
+            }
         }
         // 排版参数变化后必须重排：字号/行距/边距都会改变每页容量。
         // 用当前页的起始字符偏移作为锚点，重排后仍停在原来的位置。
@@ -206,6 +230,9 @@ struct ReaderView: View {
         }
         .onChange(of: appState.theme) { _, _ in
             rebuildFramesetterOnly()
+        }
+        .onChange(of: chapterIndex) { _, _ in
+            refreshBookmark()
         }
     }
 
@@ -235,9 +262,13 @@ struct ReaderView: View {
         } else if pageIndex < pages.count, let framesetter {
             // 注意：这里不再重建 attributed，也不再挂 .id(...)，
             // 翻页只是把新的 range 交给同一个 CoreTextPageView。
+            // allowsHitTesting(false) 是关键：CoreTextPage 内部是 UIView，
+            // 默认会吃掉触摸，导致外层 onTapGesture 永远收不到点击，
+            // 表现就是"点屏幕出不来上下工具栏"。
             CoreTextPage(framesetter: framesetter, range: pages[pageIndex])
                 .equatable()
                 .frame(width: textSize.width, height: textSize.height)
+                .allowsHitTesting(false)
         } else {
             Color.clear
         }
@@ -292,27 +323,39 @@ struct ReaderView: View {
     // MARK: - 页脚
 
     private func footer(layout: ReaderLayout) -> some View {
-        VStack {
-            Spacer()
-            HStack {
+        VStack(spacing: 0) {
+            // 顶部一行：左章节名、右页码（云书阁隐藏工具栏时就是这样）
+            HStack(spacing: 8) {
                 Text(currentChapter?.title ?? "")
                     .lineLimit(1)
-                Spacer()
+                Spacer(minLength: 8)
                 if isScrollMode {
                     Text("\(Int(book.readingProgress * 100))%")
                         .monospacedDigit()
                 } else {
                     Text("\(pageIndex + 1)/\(max(pages.count, 1))")
                         .monospacedDigit()
-                    Spacer()
-                    Text("\(Int(book.readingProgress * 100))%")
-                        .monospacedDigit()
                 }
             }
             .font(.system(size: 11))
             .foregroundStyle(theme.secondaryTextColor)
             .padding(.horizontal, layout.marginH)
-            .padding(.bottom, max(layout.insets.bottom, 8) + 4)
+            .padding(.top, max(layout.insets.top, 20) - 4)
+
+            Spacer(minLength: 0)
+
+            // 底部一行：左"第几章 / 共几章"、右阅读进度
+            HStack(spacing: 8) {
+                Text("\(chapterIndex + 1) / \(max(chapters.count, 1)) 章")
+                    .monospacedDigit()
+                Spacer(minLength: 8)
+                Text("\(Int(book.readingProgress * 100))%")
+                    .monospacedDigit()
+            }
+            .font(.system(size: 11))
+            .foregroundStyle(theme.secondaryTextColor)
+            .padding(.horizontal, layout.marginH)
+            .padding(.bottom, max(layout.insets.bottom, 8) + 2)
         }
         .allowsHitTesting(false)
     }
@@ -320,52 +363,63 @@ struct ReaderView: View {
     // MARK: - 顶栏
 
     private var topBar: some View {
-        VStack(spacing: 8) {
-            HStack(spacing: 12) {
+        VStack(spacing: 6) {
+            HStack(spacing: 4) {
                 Button {
                     saveProgress()
                     dismiss()
                 } label: {
                     Image(systemName: "chevron.left")
-                        .font(.system(size: 17, weight: .semibold))
+                        .font(.system(size: 20, weight: .regular))
                         .foregroundStyle(skin.accent)
-                        .frame(width: 34, height: 34)
+                        .frame(width: 40, height: 40)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(book.title)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(skin.textPrimary)
-                        .lineLimit(1)
-                    Text(currentChapter?.title ?? "")
-                        .font(.caption2)
-                        .foregroundStyle(skin.textSecondary)
-                        .lineLimit(1)
-                }
+                Spacer(minLength: 0)
 
-                Spacer(minLength: 8)
+                Text(currentChapter?.title ?? book.title)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(skin.textPrimary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+
+                Spacer(minLength: 0)
+
+                Button {
+                    toggleBookmark()
+                } label: {
+                    Image(systemName: isBookmarked ? "bookmark.fill" : "bookmark")
+                        .font(.system(size: 16, weight: .regular))
+                        .foregroundStyle(skin.accent)
+                        .frame(width: 36, height: 40)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
 
                 Menu {
                     Button { showChapterList = true } label: { Label("目录", systemImage: "list.bullet") }
-                    Button { showSettings = true } label: { Label("排版", systemImage: "textformat.size") }
+                    Button { showSettings = true } label: { Label("排版设置", systemImage: "textformat.size") }
                     if let ch = currentChapter, !ch.isCached, ch.remoteURL != nil {
                         Button {
                             DownloadManager.shared.downloadAll(book: book, store: store)
                         } label: { Label("下载整本", systemImage: "arrow.down.circle") }
                     }
+                    Button {
+                        saveProgress()
+                        dismiss()
+                    } label: { Label("退出阅读", systemImage: "xmark") }
                 } label: {
                     Image(systemName: "ellipsis")
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(skin.accent)
-                        .frame(width: 34, height: 34)
+                        .frame(width: 36, height: 40)
                         .contentShape(Rectangle())
                 }
             }
 
-            // 「下载整本」的实时进度：直接观察 DownloadManager 里这本书的任务，
-            // 章节维度 + 当前章字节维度合成 fraction，完成后自动消失。
+            // 「下载整本」的实时进度
             if let task = DownloadManager.shared.task(for: book.id), task.state.isActive {
                 HStack(spacing: 8) {
                     ProgressView(value: task.fraction)
@@ -385,14 +439,15 @@ struct ReaderView: View {
                     }
                     .buttonStyle(.plain)
                 }
+                .padding(.horizontal, 8)
                 .transition(.opacity)
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.top, 4)
-        .padding(.bottom, 10)
+        .padding(.horizontal, 6)
+        .padding(.top, 2)
+        .padding(.bottom, 6)
         .background {
-            skin.surface
+            skin.surface.opacity(0.98)
                 .overlay(alignment: .bottom) {
                     Rectangle().fill(skin.separator).frame(height: 0.5)
                 }
@@ -404,12 +459,18 @@ struct ReaderView: View {
 
     private var bottomBar: some View {
         VStack(spacing: 14) {
-            // 整本书进度：拖动可快速跳到任意章节
-            HStack(spacing: 10) {
-                Text("\(chapterIndex + 1)")
-                    .font(.caption2)
-                    .foregroundStyle(skin.textSecondary)
-                    .monospacedDigit()
+            // 上一章 —— 滑杆 —— 下一章（云书阁底部就是这个排布）
+            HStack(spacing: 12) {
+                Button {
+                    goToChapter(max(chapterIndex - 1, 0), offset: 0)
+                } label: {
+                    Text("上一章")
+                        .font(.system(size: 13))
+                        .foregroundStyle(chapterIndex > 0 ? skin.textPrimary : skin.textSecondary.opacity(0.35))
+                }
+                .buttonStyle(.plain)
+                .disabled(chapterIndex <= 0)
+
                 Slider(value: Binding(
                     get: { Double(chapterIndex) },
                     set: { newValue in
@@ -419,24 +480,35 @@ struct ReaderView: View {
                     }
                 ), in: 0...Double(max(chapters.count - 1, 1)))
                 .tint(skin.accent)
-                Text("\(chapters.count)")
-                    .font(.caption2)
-                    .foregroundStyle(skin.textSecondary)
-                    .monospacedDigit()
+
+                Button {
+                    goToChapter(min(chapterIndex + 1, max(chapters.count - 1, 0)), offset: 0)
+                } label: {
+                    Text("下一章")
+                        .font(.system(size: 13))
+                        .foregroundStyle(chapterIndex < chapters.count - 1 ? skin.textPrimary : skin.textSecondary.opacity(0.35))
+                }
+                .buttonStyle(.plain)
+                .disabled(chapterIndex >= chapters.count - 1)
             }
 
             HStack(spacing: 0) {
-                chromeButton("上一章", "chevron.up", enabled: chapterIndex > 0) {
-                    goToChapter(max(chapterIndex - 1, 0), offset: 0)
-                }
                 chromeButton("目录", "list.bullet", enabled: true) {
                     showChapterList = true
                 }
-                chromeButton("排版", "textformat.size", enabled: true) {
+                chromeButton("亮度", "sun.min", enabled: true) {
                     showSettings = true
                 }
-                chromeButton("下一章", "chevron.down", enabled: chapterIndex < chapters.count - 1) {
-                    goToChapter(min(chapterIndex + 1, max(chapters.count - 1, 0)), offset: 0)
+                chromeButton("听书", "headphones", enabled: true) {
+                    flash("听书功能还没接上")
+                }
+                chromeButton("设置", "textformat.size", enabled: true) {
+                    showSettings = true
+                }
+                chromeButton(theme.isDark ? "日间" : "夜间",
+                             theme.isDark ? "sun.max" : "moon",
+                             enabled: true) {
+                    appState.theme = theme.isDark ? .paper : .dark
                 }
             }
         }
@@ -470,6 +542,34 @@ struct ReaderView: View {
         }
         .buttonStyle(.plain)
         .disabled(!enabled)
+    }
+
+    // MARK: - 书签与轻提示
+
+    private var bookmarkKey: String { "reader.bookmark.\(book.id).\(chapterIndex)" }
+
+    private func refreshBookmark() {
+        isBookmarked = UserDefaults.standard.bool(forKey: bookmarkKey)
+    }
+
+    private func toggleBookmark() {
+        let d = UserDefaults.standard
+        if d.bool(forKey: bookmarkKey) {
+            d.removeObject(forKey: bookmarkKey)
+            flash("已取消书签")
+        } else {
+            d.set(true, forKey: bookmarkKey)
+            flash("已加书签")
+        }
+        isBookmarked = d.bool(forKey: bookmarkKey)
+    }
+
+    private func flash(_ message: String) {
+        hint = message
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_800_000_000)
+            if hint == message { hint = nil }
+        }
     }
 
     // MARK: - 手势

@@ -15,129 +15,31 @@ struct SettingsView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.omniSkin) private var skin
 
+    @Query(sort: \Book.createdAt, order: .reverse) private var books: [Book]
+
     @State private var diskUsage: Int64 = 0
     @State private var bookCount = 0
     @State private var showResetAlert = false
     @State private var message: String?
 
     var body: some View {
-        @Bindable var appState = appState
-
         NavigationStack {
-            List {
-                // MARK: 主题外观
-                Section("主题外观") {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(OmniSkin.allCases) { item in
-                                OmniChip(
-                                    title: item.displayName,
-                                    isSelected: appState.skin == item
-                                ) {
-                                    appState.skin = item
-                                }
-                            }
-                        }
-                        .padding(.vertical, 4)
-                    }
-                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
-                    .listRowBackground(Color.clear)
+            ScrollView {
+                VStack(spacing: 16) {
+                    overviewCard
+                    mainGroup
+                    groupTitle("数据与存储")
+                    dataGroup
+                    groupTitle("关于与帮助")
+                    aboutGroup
+                    resetRow
                 }
-
-                // MARK: 排版
-                Section("阅读外观") {
-                    NavigationLink {
-                        ReaderSettingsPanel(asSheet: false)
-                    } label: {
-                        Label("排版设置", systemImage: "textformat.size")
-                    }
-                    .listRowBackground(skin.surface)
-                    TypographyPreviewCard()
-                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
-                        .listRowBackground(Color.clear)
-                }
-
-                // MARK: 存储
-                Section("存储") {
-                    HStack {
-                        Label("已占用空间", systemImage: "internaldrive")
-                        Spacer()
-                        Text(ByteCountFormatter.string(fromByteCount: diskUsage, countStyle: .file))
-                            .foregroundStyle(skin.textSecondary)
-                            .monospacedDigit()
-                    }
-                    HStack {
-                        Label("书籍数量", systemImage: "books.vertical")
-                        Spacer()
-                        Text("\(bookCount) 本").foregroundStyle(skin.textSecondary)
-                    }
-                    NavigationLink {
-                        StorageDetailView(onChange: refresh)
-                    } label: {
-                        Label("清理缓存", systemImage: "trash")
-                    }
-                }
-                .listRowBackground(skin.surface)
-
-                // MARK: 文件
-                Section {
-                    HStack {
-                        Label("文件收纳箱", systemImage: "tray.and.arrow.down")
-                        Spacer()
-                        Text("Inbox")
-                            .foregroundStyle(skin.textSecondary)
-                            .font(.caption)
-                    }
-                    Text("把 TXT / EPUB 拖进「文件」App → 我的 iPhone → 书虫 → Inbox，回到书架下拉即可自动导入。也可以在「文件」里长按文件 → 共享 → 书虫。")
-                        .font(.footnote)
-                        .foregroundStyle(skin.textSecondary)
-                } header: {
-                    Text("导入方式")
-                }
-                .listRowBackground(skin.surface)
-
-                // MARK: 书源
-                Section("书源") {
-                    HStack {
-                        Label("书源数量", systemImage: "network")
-                        Spacer()
-                        Text("\(registry.sources.count)").foregroundStyle(skin.textSecondary)
-                    }
-                    Button {
-                        UIPasteboard.general.string = registry.exportJSON()
-                        message = "书源配置已复制"
-                    } label: {
-                        Label("复制书源配置 JSON", systemImage: "doc.on.doc")
-                    }
-                }
-                .listRowBackground(skin.surface)
-
-                // MARK: 关于
-                Section("关于") {
-                    HStack {
-                        Text("版本")
-                        Spacer()
-                        Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")
-                            .foregroundStyle(skin.textSecondary)
-                    }
-                    NavigationLink {
-                        AboutView()
-                    } label: {
-                        Label("关于与自签说明", systemImage: "info.circle")
-                    }
-                }
-                .listRowBackground(skin.surface)
-
-                Section {
-                    Button("重置所有缓存", role: .destructive) {
-                        showResetAlert = true
-                    }
-                }
-                .listRowBackground(skin.surface)
+                .padding(.top, 8)
+                .padding(.bottom, 30)
             }
-            .scrollContentBackground(.hidden)
             .background(skin.background)
             .navigationTitle("我的")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(skin.surface, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .task { refresh() }
@@ -157,6 +59,300 @@ struct SettingsView: View {
                 Text("会删除所有已缓存的章节正文（书籍条目和原始文件保留）。")
             }
         }
+    }
+
+    // MARK: - 阅读概览
+
+    private var readingCount: Int {
+        books.filter { $0.readingProgress > 0.001 && $0.readingProgress < 0.999 }.count
+    }
+
+    private var finishedCount: Int {
+        books.filter { $0.readingProgress >= 0.999 }.count
+    }
+
+    private var overviewCard: some View {
+        VStack(spacing: 14) {
+            HStack(alignment: .top, spacing: 8) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("阅读概览")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(skin.textPrimary)
+                    Text("含阅读与收听的时长")
+                        .font(.system(size: 12))
+                        .foregroundStyle(skin.textSecondary)
+                }
+                Spacer(minLength: 4)
+                VStack(alignment: .trailing, spacing: 3) {
+                    Text(ReadingStats.text(minutes: ReadingStats.totalMinutes))
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(skin.textPrimary)
+                        .lineLimit(1)
+                    Text("累计阅读")
+                        .font(.system(size: 11))
+                        .foregroundStyle(skin.textSecondary)
+                }
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(skin.textSecondary.opacity(0.45))
+                    .padding(.top, 3)
+            }
+
+            Rectangle()
+                .fill(skin.separator)
+                .frame(height: 0.5)
+
+            HStack(spacing: 0) {
+                statItem(symbol: "clock.fill", tint: skin.accent,
+                         value: ReadingStats.text(minutes: ReadingStats.monthMinutes),
+                         label: "本月时长")
+                statItem(symbol: "book.fill", tint: skin.accent,
+                         value: "\(readingCount)", label: "在读")
+                statItem(symbol: "checkmark.circle.fill", tint: skin.accent,
+                         value: "\(finishedCount)", label: "已读完")
+            }
+
+            HStack(spacing: 6) {
+                Image(systemName: "leaf.fill")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color(hex: 0x34C759))
+                Text("连续阅读 \(ReadingStats.streak) 天 · 今日阅读 \(ReadingStats.text(minutes: ReadingStats.todayMinutes))")
+                    .font(.system(size: 12))
+                    .foregroundStyle(skin.textSecondary)
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(16)
+        .background {
+            RoundedRectangle(cornerRadius: 16, style: .continuous).fill(skin.surface)
+        }
+        .padding(.horizontal, 16)
+    }
+
+    private func statItem(symbol: String, tint: Color, value: String, label: String) -> some View {
+        VStack(spacing: 5) {
+            ZStack {
+                Circle().fill(tint.opacity(0.16))
+                Image(systemName: symbol)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(tint)
+            }
+            .frame(width: 24, height: 24)
+
+            Text(value)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(skin.textPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.65)
+
+            Text(label)
+                .font(.system(size: 11))
+                .foregroundStyle(skin.textSecondary)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - 分组卡片
+
+    private func groupTitle(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 13))
+            .foregroundStyle(skin.textSecondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 20)
+            .padding(.top, 2)
+    }
+
+    private func groupCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(spacing: 0) { content() }
+            .background {
+                RoundedRectangle(cornerRadius: 14, style: .continuous).fill(skin.surface)
+            }
+            .padding(.horizontal, 16)
+    }
+
+    private func settingsRow(_ title: String,
+                             icon: String,
+                             tint: Color,
+                             value: String? = nil) -> some View {
+        HStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 7, style: .continuous).fill(tint)
+                Image(systemName: icon)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white)
+            }
+            .frame(width: 28, height: 28)
+
+            Text(title)
+                .font(.system(size: 15))
+                .foregroundStyle(skin.textPrimary)
+
+            Spacer(minLength: 8)
+
+            if let value {
+                Text(value)
+                    .font(.system(size: 13))
+                    .foregroundStyle(skin.textSecondary)
+                    .lineLimit(1)
+            }
+
+            Image(systemName: "chevron.right")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(skin.textSecondary.opacity(0.45))
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
+        .contentShape(Rectangle())
+    }
+
+    private var rowDivider: some View {
+        Rectangle()
+            .fill(skin.separator)
+            .frame(height: 0.5)
+            .padding(.leading, 54)
+    }
+
+    // MARK: - 主分组
+
+    private var mainGroup: some View {
+        groupCard {
+            NavigationLink {
+                ReaderSettingsPanel(asSheet: false)
+            } label: {
+                settingsRow("通用设置", icon: "gearshape.fill", tint: Color(hex: 0x8E8E93))
+            }
+            .buttonStyle(.plain)
+
+            rowDivider
+
+            NavigationLink {
+                SkinAndIconView()
+            } label: {
+                settingsRow("外观与图标", icon: "circle.lefthalf.filled", tint: Color(hex: 0x1C1C1E))
+            }
+            .buttonStyle(.plain)
+
+            rowDivider
+
+            NavigationLink {
+                AIProviderView()
+            } label: {
+                settingsRow("AI 提供商", icon: "sparkles", tint: Color(hex: 0x0A84FF))
+            }
+            .buttonStyle(.plain)
+
+            rowDivider
+
+            NavigationLink {
+                StorageDetailView(onChange: refresh)
+            } label: {
+                settingsRow("藏书阁", icon: "books.vertical.fill", tint: Color(hex: 0xFF9500),
+                            value: "\(bookCount) 本")
+            }
+            .buttonStyle(.plain)
+
+            rowDivider
+
+            NavigationLink {
+                LegadoSourcesView()
+            } label: {
+                settingsRow("书源管理", icon: "square.and.arrow.down.fill", tint: Color(hex: 0x34C759),
+                            value: "\(registry.sources.count) 个")
+            }
+            .buttonStyle(.plain)
+
+            rowDivider
+
+            NavigationLink {
+                FavoritesView()
+            } label: {
+                settingsRow("收藏管理", icon: "heart.fill", tint: Color(hex: 0xFF2D55),
+                            value: "\(books.filter(\.isPinned).count)")
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    // MARK: - 数据与存储
+
+    private var dataGroup: some View {
+        groupCard {
+            NavigationLink {
+                StorageDetailView(onChange: refresh)
+            } label: {
+                settingsRow("下载与缓存", icon: "arrow.down.circle.fill", tint: Color(hex: 0x34C759),
+                            value: ByteCountFormatter.string(fromByteCount: diskUsage, countStyle: .file))
+            }
+            .buttonStyle(.plain)
+
+            rowDivider
+
+            NavigationLink {
+                SyncBackupView()
+            } label: {
+                settingsRow("同步与备份", icon: "arrow.triangle.2.circlepath.circle.fill",
+                            tint: Color(hex: 0x0A84FF))
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    // MARK: - 关于
+
+    private var aboutGroup: some View {
+        groupCard {
+            NavigationLink {
+                AboutView()
+            } label: {
+                settingsRow("关于与帮助", icon: "info.circle.fill", tint: Color(hex: 0x636366),
+                            value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")
+            }
+            .buttonStyle(.plain)
+
+            rowDivider
+
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Color(hex: 0x30D158))
+                    Image(systemName: "tray.and.arrow.down.fill")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
+                .frame(width: 28, height: 28)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("文件收纳箱")
+                        .font(.system(size: 15))
+                        .foregroundStyle(skin.textPrimary)
+                    Text("Documents/Inbox，放进去后回书架下拉自动导入")
+                        .font(.system(size: 11))
+                        .foregroundStyle(skin.textSecondary)
+                        .lineLimit(2)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 11)
+        }
+    }
+
+    private var resetRow: some View {
+        Button {
+            showResetAlert = true
+        } label: {
+            Text("重置所有缓存")
+                .font(.system(size: 15))
+                .foregroundStyle(Color(hex: 0xE85D5D))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 13)
+                .background {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous).fill(skin.surface)
+                }
+                .padding(.horizontal, 16)
+        }
+        .buttonStyle(.plain)
+        .padding(.top, 4)
     }
 
     private func refresh() {
