@@ -426,3 +426,63 @@ struct OmniEmptyState: View {
         .background(skin.background)
     }
 }
+
+// MARK: - 底部导航栏
+
+/// 自绘 TabBar。系统 TabView 的 appearance 只在创建时读取一次，
+/// 换肤后必须重建视图才会变色，所以这里完全用 SwiftUI 状态驱动。
+struct OmniTabBar: View {
+    @Binding var selection: AppState.Tab
+    let skin: OmniSkin
+
+    private struct Item {
+        let tab: AppState.Tab
+        let title: String
+        let symbol: String
+    }
+
+    private static let items: [Item] = [
+        Item(tab: .library, title: "书架", symbol: "books.vertical.fill"),
+        Item(tab: .audiobook, title: "有声", symbol: "headphones"),
+        Item(tab: .sources, title: "书源", symbol: "network"),
+        Item(tab: .comic, title: "漫画", symbol: "photo.on.rectangle.angled"),
+        Item(tab: .discover, title: "搜索", symbol: "magnifyingglass"),
+    ]
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(Self.items, id: \.title) { item in
+                let isSelected = selection == item.tab
+                Button {
+                    guard selection != item.tab else { return }
+                    withAnimation(.easeOut(duration: 0.16)) {
+                        selection = item.tab
+                    }
+                } label: {
+                    VStack(spacing: 4) {
+                        Image(systemName: item.symbol)
+                            .font(.system(size: 18, weight: isSelected ? .semibold : .regular))
+                            .frame(height: 21)
+                        Text(item.title)
+                            .font(.system(size: 10, weight: isSelected ? .semibold : .regular))
+                    }
+                    .foregroundStyle(isSelected ? skin.accent : skin.textSecondary)
+                    .frame(maxWidth: .infinity)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.top, 9)
+        .padding(.bottom, 1)
+        .background {
+            skin.surface
+                .overlay(alignment: .top) {
+                    Rectangle()
+                        .fill(skin.separator)
+                        .frame(height: 0.5)
+                }
+                .ignoresSafeArea(edges: .bottom)
+        }
+    }
+}

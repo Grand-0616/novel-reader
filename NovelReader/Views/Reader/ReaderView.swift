@@ -85,7 +85,7 @@ struct ReaderView: View {
     @State private var currentLayout: ReaderLayout?
     @State private var isLoading = true
     @State private var loadError: String?
-    @State private var dragOffset: CGFloat = 0
+
 
     // MARK: 性能相关缓存
     /// 整章的 attributed string 与 framesetter，随章节/排版参数变化重建一次
@@ -236,8 +236,8 @@ struct ReaderView: View {
             // 注意：这里不再重建 attributed，也不再挂 .id(...)，
             // 翻页只是把新的 range 交给同一个 CoreTextPageView。
             CoreTextPage(framesetter: framesetter, range: pages[pageIndex])
+                .equatable()
                 .frame(width: textSize.width, height: textSize.height)
-                .offset(x: dragOffset)
         } else {
             Color.clear
         }
@@ -512,16 +512,17 @@ struct ReaderView: View {
         withAnimation(.easeInOut(duration: 0.15)) { showChrome.toggle() }
     }
 
+    /// 手势只做判定，不做跟手位移：拖动期间任何 @State 变化都会让整个
+    /// ReaderView 重新求值（含 SwiftData 关系访问与 Core Text 视图重建），
+    /// 那才是翻页卡顿的真正来源。
     private func swipeGesture(width: CGFloat) -> some Gesture {
         DragGesture(minimumDistance: 24)
-            .onChanged { value in
-                guard appState.pageTurnStyle == .slide else { return }
-                dragOffset = value.translation.width * 0.25
-            }
             .onEnded { value in
                 let threshold: CGFloat = 50
                 let dx = value.translation.width
-                dragOffset = 0
+                let dy = value.translation.height
+                // 明显是纵向拖动就交给系统，不当作翻页
+                guard abs(dx) > abs(dy) else { return }
                 if dx < -threshold {
                     nextPage()
                 } else if dx > threshold {
@@ -538,11 +539,11 @@ struct ReaderView: View {
         return pages[pageIndex].location
     }
 
+    /// 翻页不加动画：CoreTextPage 是 UIViewRepresentable，包在 withAnimation
+    /// 里会被要求逐帧刷新，等于每帧重排整页文字。
     private func nextPage() {
         if pageIndex + 1 < pages.count {
-            withAnimation(appState.pageTurnStyle == .none ? nil : .easeInOut(duration: 0.18)) {
-                pageIndex += 1
-            }
+            pageIndex += 1
             saveProgress()
         } else if chapterIndex + 1 < chapters.count {
             goToChapter(chapterIndex + 1, offset: 0)
@@ -551,9 +552,7 @@ struct ReaderView: View {
 
     private func previousPage() {
         if pageIndex > 0 {
-            withAnimation(appState.pageTurnStyle == .none ? nil : .easeInOut(duration: 0.18)) {
-                pageIndex -= 1
-            }
+            pageIndex -= 1
             saveProgress()
         } else if chapterIndex > 0 {
             // 跳到上一章最后一页
@@ -754,92 +753,240 @@ struct ReaderSettingsPanel: View {
     private var form: some View {
         @Bindable var appState = appState
 
-        Form {
-            Section("主题") {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 12) {
-                        ForEach(ReaderTheme.allCases) { t in
-                            Button {
-                                appState.theme = t
-                            } label: {
-                                VStack(spacing: 6) {
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .fill(t.backgroundColor)
-                                        .frame(width: 56, height: 56)
-                                        .overlay {
-                                            RoundedRectangle(cornerRadius: 8)
-                                                .strokeBorder(appState.theme == t ? skin.accent : Color.secondary.opacity(0.25),
-                                                              lineWidth: appState.theme == t ? 2 : 1)
-                                            Text("Aa")
-                                                .font(.system(size: 17, weight: .medium, design: .serif))
-                                                .foregroundStyle(t.textColor)
-                                        }
-                                    Text(t.displayName)
-                                        .font(.caption2)
-                                        .foregroundStyle(appState.theme == t ? skin.accent : .secondary)
-                                }
+        ScrollView {
+            VStack(spacing: 12) {
+                themeCard
+                fontSizeCard
+                sliderCard(title: "行距", value: $appState.lineSpacing, range: 0...20, step: 1)
+                sliderCard(title: "段距", value: $appState.paragraphSpacing, range: 0...24, step: 2)
+                marginCard
+                pageTurnCard
+                footerCard
+                resetCard
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 10)
+            .padding(.bottom, 30)
+        }
+        .background(skin.background)
+    }
+
+    // MARK: 卡片
+
+    private func settingsCard<Content: View>(
+        _ title: String,
+        trailing: String? = nil,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Text(title)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(skin.textPrimary)
+                Spacer(minLength: 8)
+                if let trailing {
+                    Text(trailing)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(skin.accent)
+                        .monospacedDigit()
+                }
+            }
+            content()
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(skin.surface)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(skin.separator, lineWidth: 0.5)
+        }
+    }
+
+    private var themeCard: some View {
+        settingsCard("阅读主题", trailing: appState.theme.displayName) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(ReaderTheme.allCases) { item in
+                        Button {
+                            appState.theme = item
+                        } label: {
+                            VStack(spacing: 6) {
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .fill(item.backgroundColor)
+                                    .frame(width: 52, height: 52)
+                                    .overlay {
+                                        Text("Aa")
+                                            .font(.system(size: 16, weight: .medium, design: .serif))
+                                            .foregroundStyle(item.textColor)
+                                    }
+                                    .overlay {
+                                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                            .strokeBorder(appState.theme == item ? skin.accent : skin.separator,
+                                                          lineWidth: appState.theme == item ? 2 : 1)
+                                    }
+                                Text(item.displayName)
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(appState.theme == item ? skin.accent : skin.textSecondary)
                             }
-                            .buttonStyle(.plain)
                         }
+                        .buttonStyle(.plain)
                     }
-                    .padding(.vertical, 4)
                 }
+                .padding(.vertical, 2)
             }
+        }
+    }
 
-            Section("字号 \(Int(appState.fontSize))") {
+    private var fontSizeCard: some View {
+        @Bindable var appState = appState
+        return settingsCard("字号", trailing: "\(Int(appState.fontSize))") {
+            HStack(spacing: 14) {
+                fontSizeButton("A", size: 13, enabled: appState.fontSize > 12) {
+                    appState.fontSize = max(12, appState.fontSize - 1)
+                }
                 Slider(value: $appState.fontSize, in: 12...32, step: 1)
-                HStack {
-                    Button("A-") { appState.fontSize = max(12, appState.fontSize - 1) }
-                    Spacer()
-                    Button("A+") { appState.fontSize = min(32, appState.fontSize + 1) }
-                }
-                .font(.headline)
-            }
-
-            Section("行距 \(String(format: "%.0f", appState.lineSpacing))") {
-                Slider(value: $appState.lineSpacing, in: 0...20, step: 1)
-            }
-
-            Section("段距 \(String(format: "%.0f", appState.paragraphSpacing))") {
-                Slider(value: $appState.paragraphSpacing, in: 0...24, step: 2)
-            }
-
-            Section("页边距") {
-                VStack(alignment: .leading) {
-                    Text("左右 \(Int(appState.marginHorizontal * 100))%").font(.caption).foregroundStyle(.secondary)
-                    Slider(value: $appState.marginHorizontal, in: 0.02...0.15, step: 0.005)
-                }
-                VStack(alignment: .leading) {
-                    Text("上下 \(Int(appState.marginVertical * 100))%").font(.caption).foregroundStyle(.secondary)
-                    Slider(value: $appState.marginVertical, in: 0.01...0.10, step: 0.005)
-                }
-            }
-
-            Section {
-                Picker("翻页方式", selection: $appState.pageTurnStyle) {
-                    ForEach(PageTurnStyle.allCases) { s in
-                        Text(s.displayName).tag(s)
-                    }
-                }
-                .pickerStyle(.segmented)
-
-                Toggle("显示页脚", isOn: $appState.showFooter)
-            } header: {
-                Text("翻页方式")
-            } footer: {
-                Text(appState.pageTurnStyle.isScrollMode
-                     ? "上下滑动：整章连续滚动，适合长章节连贯阅读。点击屏幕左右可切换上一章/下一章。"
-                     : "左右滑动为分页模式，点击屏幕左右三分之一区域翻页。")
-                    .font(.caption2)
-            }
-
-            Section {
-                Button("恢复默认排版") {
-                    appState.resetReaderDefaults()
+                    .tint(skin.accent)
+                fontSizeButton("A", size: 21, enabled: appState.fontSize < 32) {
+                    appState.fontSize = min(32, appState.fontSize + 1)
                 }
             }
         }
-        .scrollContentBackground(.hidden)
-        .background(skin.background)
+    }
+
+    private func fontSizeButton(_ label: String, size: CGFloat, enabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(label)
+                .font(.system(size: size, weight: .semibold, design: .serif))
+                .foregroundStyle(enabled ? skin.textPrimary : skin.textSecondary.opacity(0.4))
+                .frame(width: 38, height: 38)
+                .background {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(skin.surfaceAlt)
+                }
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+    }
+
+    private func sliderCard(
+        title: String,
+        value: Binding<Double>,
+        range: ClosedRange<Double>,
+        step: Double
+    ) -> some View {
+        settingsCard(title, trailing: "\(Int(value.wrappedValue))") {
+            Slider(value: value, in: range, step: step)
+                .tint(skin.accent)
+        }
+    }
+
+    private var marginCard: some View {
+        @Bindable var appState = appState
+        return settingsCard("页边距") {
+            VStack(spacing: 10) {
+                HStack(spacing: 10) {
+                    Text("左右")
+                        .font(.system(size: 12))
+                        .foregroundStyle(skin.textSecondary)
+                        .frame(width: 34, alignment: .leading)
+                    Slider(value: $appState.marginHorizontal, in: 0.02...0.15, step: 0.005)
+                        .tint(skin.accent)
+                    Text("\(Int(appState.marginHorizontal * 100))%")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(skin.accent)
+                        .monospacedDigit()
+                        .frame(width: 38, alignment: .trailing)
+                }
+                HStack(spacing: 10) {
+                    Text("上下")
+                        .font(.system(size: 12))
+                        .foregroundStyle(skin.textSecondary)
+                        .frame(width: 34, alignment: .leading)
+                    Slider(value: $appState.marginVertical, in: 0.01...0.10, step: 0.005)
+                        .tint(skin.accent)
+                    Text("\(Int(appState.marginVertical * 100))%")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(skin.accent)
+                        .monospacedDigit()
+                        .frame(width: 38, alignment: .trailing)
+                }
+            }
+        }
+    }
+
+    private var pageTurnCard: some View {
+        @Bindable var appState = appState
+        return settingsCard("翻页方式") {
+            VStack(spacing: 10) {
+                HStack(spacing: 10) {
+                    ForEach(PageTurnStyle.allCases) { style in
+                        Button {
+                            appState.pageTurnStyle = style
+                        } label: {
+                            VStack(spacing: 6) {
+                                Image(systemName: style.isScrollMode ? "arrow.up.and.down" : "arrow.left.and.right")
+                                    .font(.system(size: 16, weight: .medium))
+                                Text(style.displayName)
+                                    .font(.system(size: 10))
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 11)
+                            .foregroundStyle(appState.pageTurnStyle == style ? skin.accent : skin.textSecondary)
+                            .background {
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .fill(appState.pageTurnStyle == style ? skin.accent.opacity(0.16) : skin.surfaceAlt)
+                            }
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .strokeBorder(appState.pageTurnStyle == style ? skin.accent : .clear, lineWidth: 1)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                Text(appState.pageTurnStyle.isScrollMode
+                     ? "整章连续滚动，适合长章节。点击屏幕左右可切换上一章/下一章。"
+                     : "左右滑动翻页，点击屏幕左右三分之一区域也能翻。")
+                    .font(.system(size: 11))
+                    .foregroundStyle(skin.textSecondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+
+    private var footerCard: some View {
+        @Bindable var appState = appState
+        return settingsCard("页脚") {
+            Toggle(isOn: $appState.showFooter) {
+                Text("显示章节名与进度")
+                    .font(.system(size: 13))
+                    .foregroundStyle(skin.textPrimary)
+            }
+            .tint(skin.accent)
+        }
+    }
+
+    private var resetCard: some View {
+        Button {
+            appState.resetReaderDefaults()
+        } label: {
+            Text("恢复默认排版")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(skin.accent)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 13)
+                .background {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(skin.surface)
+                }
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(skin.separator, lineWidth: 0.5)
+                }
+        }
+        .buttonStyle(.plain)
     }
 }

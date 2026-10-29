@@ -143,11 +143,15 @@ struct Paginator {
 /// 一页正文。framesetter 与 CTFrame 都做缓存，draw 阶段不再排版。
 final class CoreTextPageView: UIView {
     private var framesetter: CTFramesetter?
-    /// 缓存的页范围（CFRange，绝对位置）
+    /// 当前页范围（CFRange，绝对位置）
     private var pageRange = CFRange(location: 0, length: 0)
-    /// 已排版好的 CTFrame，与 pageRange + bounds 一一对应
-    private var cachedFrame: CTFrame?
     private var cachedBounds: CGRect = .zero
+
+    /// 多页 CTFrame 缓存。顺序翻页时相邻页反复进出，回翻也常命中，
+    /// 每次命中省掉一次 CTFramesetterCreateFrame 的整页排版。
+    private var frameCache: [String: CTFrame] = [:]
+    private var cacheOrder: [String] = []
+    private let cacheLimit = 4
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -163,8 +167,7 @@ final class CoreTextPageView: UIView {
     func setFramesetter(_ newFramesetter: CTFramesetter?) {
         guard newFramesetter !== framesetter else { return }
         framesetter = newFramesetter
-        cachedFrame = nil
-        cachedBounds = .zero
+        dropCache()
         setNeedsDisplay()
     }
 
@@ -172,26 +175,39 @@ final class CoreTextPageView: UIView {
     func setPageRange(_ range: CFRange) {
         guard range.location != pageRange.location || range.length != pageRange.length else { return }
         pageRange = range
-        cachedFrame = nil
         setNeedsDisplay()
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        // 尺寸变了，frame 必须重算
+        // 尺寸变了，缓存里的 frame 全部失效
         if bounds != cachedBounds {
-            cachedFrame = nil
+            cachedBounds = bounds
+            dropCache()
             setNeedsDisplay()
         }
     }
 
+    private func dropCache() {
+        frameCache.removeAll(keepingCapacity: true)
+        cacheOrder.removeAll(keepingCapacity: true)
+    }
+
+    private func cacheKey(_ range: CFRange) -> String {
+        "\(range.location)-\(range.length)-\(Int(bounds.width))x\(Int(bounds.height))"
+    }
+
     private func makeFrameIfNeeded() -> CTFrame? {
-        guard let framesetter else { return nil }
-        if let cachedFrame, cachedBounds == bounds { return cachedFrame }
+        guard let framesetter, bounds.width > 0, bounds.height > 0 else { return nil }
+        let key = cacheKey(pageRange)
+        if let hit = frameCache[key] { return hit }
         let path = CGPath(rect: bounds, transform: nil)
         let frame = CTFramesetterCreateFrame(framesetter, pageRange, path, nil)
-        cachedFrame = frame
-        cachedBounds = bounds
+        frameCache[key] = frame
+        cacheOrder.append(key)
+        while cacheOrder.count > cacheLimit {
+            frameCache.removeValue(forKey: cacheOrder.removeFirst())
+        }
         return frame
     }
 
@@ -208,10 +224,18 @@ final class CoreTextPageView: UIView {
     }
 }
 
-struct CoreTextPage: UIViewRepresentable {
+struct CoreTextPage: UIViewRepresentable, Equatable {
     /// 已缓存的整章 framesetter（关键：不再每帧重建）
     let framesetter: CTFramesetter?
     let range: NSRange
+
+    /// 只有 framesetter 或页范围变了才需要通知 UIView，
+    /// 外层其它状态（皮肤、显隐）变化时直接跳过。
+    static func == (lhs: CoreTextPage, rhs: CoreTextPage) -> Bool {
+        lhs.framesetter === rhs.framesetter
+            && lhs.range.location == rhs.range.location
+            && lhs.range.length == rhs.range.length
+    }
 
     func makeUIView(context: Context) -> CoreTextPageView {
         CoreTextPageView()
@@ -307,15 +331,44 @@ final class ContinuousTextView: UIView {
         guard let ctx = UIGraphicsGetCurrentContext() else { return }
         guard let frame = makeFrameIfNeeded() else { return }
 
-        // 只绘制与可见区域相交的行，避免整章重绘（大章节上下滑动卡顿的关键）
         let visibleRect = rect.intersection(CGRect(origin: .zero, size: bounds.size))
         guard !visibleRect.isEmpty else { return }
+
         ctx.saveGState()
-        ctx.clip(to: visibleRect)
         ctx.textMatrix = .identity
         ctx.translateBy(x: 0, y: bounds.height)
         ctx.scaleBy(x: 1, y: -1)
-        CTFrameDraw(frame, ctx)
+
+        // CTFrameDraw 会逐行遍历整章，大章节滚动时等于每帧重绘几千行。
+        // 这里改成手工取行，只画与可见区域相交的行。
+        let lines = CTFrameGetLines(frame) as NSArray as? [CTLine] ?? []
+        guard !lines.isEmpty else {
+            ctx.restoreGState()
+            return
+        }
+        var origins = [CGPoint](repeating: .zero, count: lines.count)
+        CTFrameGetLineOrigins(frame, CFRange(location: 0, length: 0), &origins)
+
+        // 可见区域换到 Core Text 坐标（原点左下、y 向上），上下各留一点余量
+        let probe = CGRect(x: visibleRect.minX,
+                           y: bounds.height - visibleRect.maxY,
+                           width: visibleRect.width,
+                           height: visibleRect.height).insetBy(dx: -8, dy: -40)
+
+        for (index, line) in lines.enumerated() {
+            let origin = origins[index]
+            var ascent: CGFloat = 0
+            var descent: CGFloat = 0
+            var leading: CGFloat = 0
+            let width = CGFloat(CTLineGetTypographicBounds(line, &ascent, &descent, &leading))
+            let lineRect = CGRect(x: origin.x,
+                                  y: origin.y - descent,
+                                  width: width,
+                                  height: ascent + descent)
+            guard lineRect.intersects(probe) else { continue }
+            ctx.textPosition = origin
+            CTLineDraw(line, ctx)
+        }
         ctx.restoreGState()
     }
 }

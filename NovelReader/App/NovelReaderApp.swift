@@ -56,57 +56,26 @@ struct NovelReaderApp: App {
 struct RootView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(AppState.self) private var appState
-    @Environment(SourceRegistry.self) private var registry
 
     var body: some View {
         @Bindable var appState = appState
+        let skin = appState.skin
 
-        TabView(selection: $appState.selectedTab) {
-            LibraryView()
-                .tabItem { Label("书架", systemImage: "books.vertical.fill") }
-                .tag(AppState.Tab.library)
-
-            AudiobookView()
-                .tabItem { Label("有声", systemImage: "headphones") }
-                .tag(AppState.Tab.audiobook)
-
-            LegadoSourcesView()
-                .tabItem { Label("书源", systemImage: "network") }
-                .tag(AppState.Tab.sources)
-
-            ComicView()
-                .tabItem { Label("漫画", systemImage: "photo.on.rectangle.angled") }
-                .tag(AppState.Tab.comic)
-
-            DiscoverView()
-                .tabItem { Label("搜索", systemImage: "magnifyingglass") }
-                .tag(AppState.Tab.discover)
+        Group {
+            switch appState.selectedTab {
+            case .library:   LibraryView()
+            case .audiobook: AudiobookView()
+            case .sources:   LegadoSourcesView()
+            case .comic:     ComicView()
+            case .discover:  DiscoverView()
+            }
         }
-        .tint(appState.skin.accent)
-        .environment(\.omniSkin, appState.skin)
-        .onAppear {
-            appState.attach(context: modelContext)
-            Self.applyTabBarAppearance(appState.skin)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            OmniTabBar(selection: $appState.selectedTab, skin: skin)
         }
-        .onChange(of: appState.skin) { _, newSkin in
-            Self.applyTabBarAppearance(newSkin)
-        }
-    }
-
-    /// SwiftUI 的 TabView 底色跟随系统，云书阁那套深色金需要自己刷。
-    private static func applyTabBarAppearance(_ skin: OmniSkin) {
-        let appearance = UITabBarAppearance()
-        appearance.configureWithOpaqueBackground()
-        appearance.backgroundColor = UIColor(skin.surface)
-        appearance.shadowColor = UIColor(skin.separator)
-
-        let item = appearance.stackedLayoutAppearance
-        item.selected.iconColor = UIColor(skin.accent)
-        item.selected.titleTextAttributes = [.foregroundColor: UIColor(skin.accent)]
-        item.normal.iconColor = UIColor(skin.textSecondary)
-        item.normal.titleTextAttributes = [.foregroundColor: UIColor(skin.textSecondary)]
-
-        UITabBar.appearance().standardAppearance = appearance
-        UITabBar.appearance().scrollEdgeAppearance = appearance
+        .tint(skin.accent)
+        .environment(\.omniSkin, skin)
+        .onAppear { appState.attach(context: modelContext) }
     }
 }

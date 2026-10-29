@@ -191,7 +191,8 @@ struct LibraryView: View {
 
     private var bookGrid: some View {
         ScrollView {
-            VStack(spacing: 14) {
+            VStack(spacing: 18) {
+                continueSection
                 groupBar
 
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 104, maximum: 140), spacing: 16)],
@@ -232,6 +233,98 @@ struct LibraryView: View {
             .padding(.bottom, 40)
         }
         .background(skin.background)
+    }
+
+    // MARK: - 继续阅读
+
+    /// 最近在读的横向卡片，只在「全部」分组且未搜索时出现，
+    /// 对应云书阁书架顶部那块继续阅读区。
+    @ViewBuilder
+    private var continueSection: some View {
+        let items = Array(
+            books
+                .filter { $0.readingProgress > 0.001 && $0.readingProgress < 0.999 }
+                .sorted { ($0.lastOpenedAt ?? .distantPast) > ($1.lastOpenedAt ?? .distantPast) }
+                .prefix(6)
+        )
+        if !items.isEmpty,
+           groupFilter == .all,
+           searchText.trimmingCharacters(in: .whitespaces).isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("继续阅读")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(skin.textPrimary)
+                    .padding(.horizontal, 16)
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 12) {
+                        ForEach(items) { book in
+                            Button {
+                                selectedBook = book
+                            } label: {
+                                continueCard(book)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                }
+            }
+        }
+    }
+
+    private func continueCard(_ book: Book) -> some View {
+        HStack(spacing: 11) {
+            coverThumb(book, width: 44, height: 60)
+            VStack(alignment: .leading, spacing: 5) {
+                Text(book.title)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(skin.textPrimary)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                Text("\(Int(book.readingProgress * 100))%  ·  \(book.displayAuthor)")
+                    .font(.system(size: 10))
+                    .foregroundStyle(skin.textSecondary)
+                    .lineLimit(1)
+                ProgressView(value: min(max(book.readingProgress, 0), 1))
+                    .tint(skin.accent)
+                    .scaleEffect(x: 1, y: 0.65, anchor: .center)
+            }
+            .frame(width: 132, alignment: .leading)
+        }
+        .padding(10)
+        .frame(width: 212)
+        .background {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(skin.surface)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(skin.separator, lineWidth: 0.5)
+        }
+    }
+
+    @ViewBuilder
+    private func coverThumb(_ book: Book, width: CGFloat, height: CGFloat) -> some View {
+        Group {
+            if let data = book.coverData, let image = UIImage(data: data) {
+                Image(uiImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+            } else {
+                ZStack {
+                    LinearGradient(
+                        colors: [skin.accent.opacity(0.32), skin.accent.opacity(0.10)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing)
+                    Text(String(book.title.prefix(1)))
+                        .font(.system(size: height * 0.34, weight: .semibold, design: .serif))
+                        .foregroundStyle(skin.accent)
+                }
+            }
+        }
+        .frame(width: width, height: height)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
     /// 分组条：横向滚动的胶囊，选中态用主题主色
