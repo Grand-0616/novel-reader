@@ -464,13 +464,13 @@ struct LegadoSourceDetailView: View {
                 capability("发现", ok: (current.ruleExplore?.isUsable ?? false))
                 capability("目录", ok: (current.ruleToc?.isUsable ?? false))
                 capability("正文", ok: (current.ruleContent?.isUsable ?? false))
-                capability("登录", ok: !current.loginUrl.isEmpty)
-                capability("脚本库", ok: !current.jsLib.isEmpty)
+                capability("登录", ok: !(current.loginUrl ?? "").isEmpty)
+                capability("脚本库", ok: !(current.jsLib ?? "").isEmpty)
             }
 
-            if !current.searchUrl.isEmpty {
+            if let searchURL = current.searchUrl, !searchURL.isEmpty {
                 Section("搜索地址") {
-                    Text(current.searchUrl)
+                    Text(searchURL)
                         .font(.system(.footnote, design: .monospaced))
                         .textSelection(.enabled)
                 }
