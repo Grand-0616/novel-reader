@@ -250,7 +250,7 @@ struct LibraryView: View {
                 allShelfSection
             }
             .padding(.top, 6)
-            .padding(.bottom, 96)
+            .padding(.bottom, 16)
         }
         .background(skin.background)
     }

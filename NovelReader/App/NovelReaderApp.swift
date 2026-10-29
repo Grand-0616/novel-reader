@@ -64,9 +64,6 @@ struct RootView: View {
         Group {
             switch appState.selectedTab {
             case .library:   LibraryView()
-            case .audiobook: AudiobookView()
-            case .sources:   LegadoSourcesView()
-            case .comic:     ComicView()
             case .discover:  DiscoverView()
             }
         }

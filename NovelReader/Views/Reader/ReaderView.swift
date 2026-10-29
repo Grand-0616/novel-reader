@@ -48,10 +48,10 @@ struct ReaderLayout: Equatable {
     /// 顶部起排位置：安全区 + 一小段边距。
     /// 边距只按 30% 参与，剩下的空间全部留给正文——云书阁的正文是贴着
     /// 状态栏下方起排的，不留大片空白。
-    var topInset: CGFloat { max(insets.top, 20) + 16 + marginV * 0.40 }
+    var topInset: CGFloat { max(insets.top, 20) + 14 + marginV }
     /// 底部收排位置：安全区 + 一小段边距 + 页码行
     var bottomInset: CGFloat {
-        max(insets.bottom, 12) + marginV * 0.40 + (showsFooter ? Self.footerHeight + 6 : 8)
+        max(insets.bottom, 12) + marginV + (showsFooter ? Self.footerHeight + 4 : 6)
     }
 
     /// 正文可排版区域
@@ -632,7 +632,7 @@ struct ReaderView: View {
                     return
                 }
             }
-            withAnimation(.easeInOut(duration: 0.15)) { showChrome.toggle() }
+            showChrome.toggle()
             return
         }
 
@@ -645,7 +645,7 @@ struct ReaderView: View {
                 return
             }
         }
-        withAnimation(.easeInOut(duration: 0.15)) { showChrome.toggle() }
+        showChrome.toggle()
     }
 
     /// 手势只做判定，不做跟手位移：拖动期间任何 @State 变化都会让整个
@@ -1066,35 +1066,24 @@ struct ReaderSettingsPanel: View {
     }
 
     private var marginCard: some View {
-        @Bindable var appState = appState
-        return settingsCard("页边距") {
+        settingsCard("页边距") {
             VStack(spacing: 10) {
-                HStack(spacing: 10) {
-                    Text("左右")
-                        .font(.system(size: 12))
-                        .foregroundStyle(skin.textSecondary)
-                        .frame(width: 34, alignment: .leading)
-                    Slider(value: $appState.marginHorizontal, in: 0.02...0.15, step: 0.005)
-                        .tint(skin.accent)
-                    Text("\(Int(appState.marginHorizontal * 100))%")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(skin.accent)
-                        .monospacedDigit()
-                        .frame(width: 38, alignment: .trailing)
-                }
-                HStack(spacing: 10) {
-                    Text("上下")
-                        .font(.system(size: 12))
-                        .foregroundStyle(skin.textSecondary)
-                        .frame(width: 34, alignment: .leading)
-                    Slider(value: $appState.marginVertical, in: 0.01...0.10, step: 0.005)
-                        .tint(skin.accent)
-                    Text("\(Int(appState.marginVertical * 100))%")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(skin.accent)
-                        .monospacedDigit()
-                        .frame(width: 38, alignment: .trailing)
-                }
+                DeferredSlider(
+                    title: "左右",
+                    value: appState.marginHorizontal,
+                    range: 0...0.15,
+                    step: 0.005,
+                    display: { "\(Int($0 * 100))%" },
+                    onCommit: { appState.marginHorizontal = $0 }
+                )
+                DeferredSlider(
+                    title: "上下",
+                    value: appState.marginVertical,
+                    range: 0...0.08,
+                    step: 0.002,
+                    display: { $0 < 0.001 ? "无" : "\(Int($0 * 100))%" },
+                    onCommit: { appState.marginVertical = $0 }
+                )
             }
         }
     }
@@ -1226,5 +1215,41 @@ struct BrightnessPanel: View {
         .padding(.horizontal, 20)
         .padding(.top, 18)
         .background(skin.background)
+    }
+}
+
+/// 拖动时只更新本地草稿，松手才提交给 AppState。
+/// 直接绑 AppState 会让每一次滑动都触发整章重新分页，那正是设置面板卡顿的根源。
+private struct DeferredSlider: View {
+    let title: String
+    let value: Double
+    let range: ClosedRange<Double>
+    let step: Double
+    let display: (Double) -> String
+    let onCommit: (Double) -> Void
+
+    @Environment(\.omniSkin) private var skin
+    @State private var draft: Double = 0
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Text(title)
+                .font(.system(size: 12))
+                .foregroundStyle(skin.textSecondary)
+                .frame(width: 34, alignment: .leading)
+            Slider(value: $draft, in: range, step: step) { editing in
+                if !editing { onCommit(draft) }
+            }
+            .tint(skin.accent)
+            Text(display(draft))
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(skin.accent)
+                .monospacedDigit()
+                .frame(width: 38, alignment: .trailing)
+        }
+        .onAppear { draft = value }
+        .onChange(of: value) { _, new in
+            if abs(new - draft) > 0.0001 { draft = new }
+        }
     }
 }

@@ -62,6 +62,9 @@ struct ReaderBackdropView: View {
             }
         }
         .allowsHitTesting(false)
+        // 粒子与渐变在每次 body 求值时都会重画；离屏合成成一张纹理后，
+        // 工具栏显隐、页码变化都不再触发底层重绘。
+        .drawingGroup(opaque: false)
     }
 
     @ViewBuilder

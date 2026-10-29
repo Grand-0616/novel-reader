@@ -429,8 +429,10 @@ struct OmniEmptyState: View {
 
 // MARK: - 底部导航栏
 
-/// 自绘 TabBar。系统 TabView 的 appearance 只在创建时读取一次，
+/// 自绘底部悬浮胶囊。系统 TabView 的 appearance 只在创建时读取一次，
 /// 换肤后必须重建视图才会变色，所以这里完全用 SwiftUI 状态驱动。
+/// 只保留「书架 / 藏书阁」两页：有声与漫画已经在书架顶部的三段切换里，
+/// 书源管理移进了设置页，避免同一条导航重复出现。
 struct OmniTabBar: View {
     @Binding var selection: AppState.Tab
     let skin: OmniSkin
@@ -443,46 +445,72 @@ struct OmniTabBar: View {
 
     private static let items: [Item] = [
         Item(tab: .library, title: "书架", symbol: "books.vertical.fill"),
-        Item(tab: .audiobook, title: "有声", symbol: "headphones"),
-        Item(tab: .sources, title: "书源", symbol: "network"),
-        Item(tab: .comic, title: "漫画", symbol: "photo.on.rectangle.angled"),
-        Item(tab: .discover, title: "搜索", symbol: "magnifyingglass"),
+        Item(tab: .discover, title: "藏书阁", symbol: "sparkles"),
     ]
 
     var body: some View {
-        HStack(spacing: 0) {
-            ForEach(Self.items, id: \.title) { item in
-                let isSelected = selection == item.tab
-                Button {
-                    guard selection != item.tab else { return }
-                    withAnimation(.easeOut(duration: 0.16)) {
+        HStack(spacing: 10) {
+            HStack(spacing: 0) {
+                ForEach(Self.items, id: \.title) { item in
+                    let isSelected = selection == item.tab
+                    Button {
+                        guard selection != item.tab else { return }
                         selection = item.tab
+                    } label: {
+                        VStack(spacing: 3) {
+                            Image(systemName: item.symbol)
+                                .font(.system(size: 17, weight: isSelected ? .semibold : .regular))
+                                .frame(height: 20)
+                            Text(item.title)
+                                .font(.system(size: 10, weight: isSelected ? .semibold : .regular))
+                        }
+                        .foregroundStyle(isSelected ? skin.accent : skin.textSecondary)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 52)
+                        .background {
+                            if isSelected {
+                                Capsule(style: .continuous)
+                                    .fill(skin.accent.opacity(0.14))
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 5)
+                            }
+                        }
+                        .contentShape(Rectangle())
                     }
-                } label: {
-                    VStack(spacing: 4) {
-                        Image(systemName: item.symbol)
-                            .font(.system(size: 18, weight: isSelected ? .semibold : .regular))
-                            .frame(height: 21)
-                        Text(item.title)
-                            .font(.system(size: 10, weight: isSelected ? .semibold : .regular))
-                    }
-                    .foregroundStyle(isSelected ? skin.accent : skin.textSecondary)
-                    .frame(maxWidth: .infinity)
-                    .contentShape(Rectangle())
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
+            .frame(maxWidth: .infinity)
+            .background {
+                Capsule(style: .continuous)
+                    .fill(skin.surface)
+                    .shadow(color: .black.opacity(0.12), radius: 12, y: 5)
+                    .overlay {
+                        Capsule(style: .continuous)
+                            .strokeBorder(skin.separator, lineWidth: 0.5)
+                    }
+            }
+
+            Button {
+                selection = .discover
+            } label: {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(skin.textPrimary)
+                    .frame(width: 52, height: 52)
+                    .background {
+                        Circle()
+                            .fill(skin.surface)
+                            .shadow(color: .black.opacity(0.12), radius: 12, y: 5)
+                            .overlay {
+                                Circle().strokeBorder(skin.separator, lineWidth: 0.5)
+                            }
+                    }
+            }
+            .buttonStyle(.plain)
         }
-        .padding(.top, 9)
-        .padding(.bottom, 1)
-        .background {
-            skin.surface
-                .overlay(alignment: .top) {
-                    Rectangle()
-                        .fill(skin.separator)
-                        .frame(height: 0.5)
-                }
-                .ignoresSafeArea(edges: .bottom)
-        }
+        .padding(.horizontal, 18)
+        .padding(.top, 4)
+        .padding(.bottom, 6)
     }
 }
