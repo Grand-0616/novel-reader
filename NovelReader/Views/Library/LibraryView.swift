@@ -29,6 +29,7 @@ struct LibraryView: View {
     @State private var readingBook: Book?
     @State private var shelfKind: ShelfKind = .novel
     @State private var showSettings = false
+    @State private var showSources = false
     @State private var groupFilter: ShelfGroup = .all
 
     enum SortMode: String, CaseIterable, Identifiable {
@@ -141,7 +142,10 @@ struct LibraryView: View {
             .sheet(item: $selectedBook) { book in
                 BookDetailView(book: book)
             }
-            .sheet(isPresented: $showSettings) {
+            .sheet(isPresented: $showSources) {
+            NavigationStack { LegadoSourcesView() }
+        }
+        .sheet(isPresented: $showSettings) {
                 SettingsView()
             }
             .overlay(alignment: .top) {
@@ -592,7 +596,7 @@ struct LibraryView: View {
                     .buttonStyle(.plain)
 
                     Button {
-                        appState.selectedTab = .sources
+                        showSources = true
                     } label: {
                         Label("添加书源", systemImage: "network")
                             .font(.subheadline.weight(.semibold))

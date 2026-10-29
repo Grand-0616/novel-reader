@@ -31,6 +31,7 @@ struct DiscoverView: View {
     @State private var importProgress: ImportProgress?
     @State private var importMessage: String?
     @State private var showSearch = false
+    @State private var showSources = false
     /// 书库里已有书的索引：用于给服务器列表打"已下载"标记
     @State private var libraryIndex = LibraryIndex()
 
@@ -82,6 +83,9 @@ struct DiscoverView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(skin.surface, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
+        .sheet(isPresented: $showSources) {
+            NavigationStack { LegadoSourcesView() }
+        }
             .toolbar { mainToolbar }
     }
 
@@ -512,7 +516,7 @@ struct DiscoverView: View {
         } description: {
             Text("去「书源」页添加 NAS 书库或在线书源，就能在这里浏览和搜索。")
         } actions: {
-            Button("管理书源") { appState.selectedTab = .sources }
+            Button("管理书源") { showSources = true }
                 .buttonStyle(.borderedProminent)
         }
     }
