@@ -113,7 +113,7 @@ final class AppState {
     /// 五个主 Tab，对齐云书阁的「书架 / 有声 / 书源 / 漫画 / 搜索」。
     /// 设置页从书架页右上角头像进入，不占 Tab 位。
     enum Tab: Hashable {
-        case library, discover
+        case library, settings
     }
 
     var selectedTab: Tab = .library
@@ -127,6 +127,8 @@ final class AppState {
     // 在 didSet 里直接读 self.prop 会撞上"正在初始化"的检查，这里统一走 persist()。
     var theme: ReaderTheme = .paper { didSet { persist() } }
     var fontSize: Double = 19 { didSet { persist() } }
+    /// 阅读字体（ReaderFont.rawValue，空串表示系统默认）
+    var fontFamily: String = "" { didSet { persist() } }
     var lineSpacing: Double = 8 { didSet { persist() } }
     var paragraphSpacing: Double = 10 { didSet { persist() } }
     var pageTurnStyle: PageTurnStyle = .slide { didSet { persist() } }
@@ -176,6 +178,7 @@ final class AppState {
     private enum Keys {
         static let theme = "reader.theme"
         static let fontSize = "reader.fontSize"
+    static let fontFamily = "reader.fontFamily"
         static let lineSpacing = "reader.lineSpacing"
         static let paragraphSpacing = "reader.paragraphSpacing"
         static let pageTurn = "reader.pageTurn"
@@ -191,6 +194,7 @@ final class AppState {
         let d = UserDefaults.standard
         d.set(theme.rawValue, forKey: Keys.theme)
         d.set(fontSize, forKey: Keys.fontSize)
+        d.set(fontFamily, forKey: Keys.fontFamily)
         d.set(lineSpacing, forKey: Keys.lineSpacing)
         d.set(paragraphSpacing, forKey: Keys.paragraphSpacing)
         d.set(pageTurnStyle.rawValue, forKey: Keys.pageTurn)
@@ -205,6 +209,7 @@ final class AppState {
         let d = UserDefaults.standard
         if let raw = d.string(forKey: Keys.theme), let t = ReaderTheme(rawValue: raw) { theme = t }
         if d.object(forKey: Keys.fontSize) != nil { fontSize = d.double(forKey: Keys.fontSize) }
+        if let fam = d.string(forKey: Keys.fontFamily) { fontFamily = fam }
         if d.object(forKey: Keys.lineSpacing) != nil { lineSpacing = d.double(forKey: Keys.lineSpacing) }
         if d.object(forKey: Keys.paragraphSpacing) != nil { paragraphSpacing = d.double(forKey: Keys.paragraphSpacing) }
         if let raw = d.string(forKey: Keys.pageTurn), let p = PageTurnStyle(rawValue: raw) { pageTurnStyle = p }
@@ -219,6 +224,7 @@ final class AppState {
     func resetReaderDefaults() {
         theme = .paper
         fontSize = 19
+        fontFamily = ""
         lineSpacing = 8
         paragraphSpacing = 10
         pageTurnStyle = .slide

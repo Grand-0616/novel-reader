@@ -15,7 +15,68 @@ struct OPDSFeed {
     var isNavigation: Bool
 }
 
+/// WebDAV 专用会话：局域网 NAS 常见三种情况会直接卡死普通 URLSession
+///   1. 群晖/威联通默认用自签证书（https 5006），系统会直接拒绝握手
+///   2. PROPFIND 命中 301 时，URLSession 默认把方法降级成 GET，服务器回 405
+///   3. 默认配置会走缓存，改了目录内容看不到变化
+private final class WebDAVTrustDelegate: NSObject, URLSessionDelegate, URLSessionTaskDelegate {
+    func urlSession(_ session: URLSession,
+                    didReceive challenge: URLAuthenticationChallenge,
+                    completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        if challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
+           let trust = challenge.protectionSpace.serverTrust {
+            completionHandler(.useCredential, URLCredential(trust: trust))
+        } else {
+            completionHandler(.performDefaultHandling, nil)
+        }
+    }
+
+    /// 重定向时保留原始方法与请求体，否则 PROPFIND 会变成 GET
+    func urlSession(_ session: URLSession,
+                    task: URLSessionTask,
+                    willPerformHTTPRedirection response: HTTPURLResponse,
+                    newRequest request: URLRequest,
+                    completionHandler: @escaping (URLRequest?) -> Void) {
+        guard let original = task.originalRequest else {
+            completionHandler(request)
+            return
+        }
+        var req = request
+        req.httpMethod = original.httpMethod
+        req.httpBody = original.httpBody
+        for (key, value) in original.allHTTPHeaderFields ?? [:] where key.lowercased() != "host" {
+            req.setValue(value, forHTTPHeaderField: key)
+        }
+        completionHandler(req)
+    }
+}
+
 enum OPDSSource {
+
+    private static let webDAVSession: URLSession = {
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = 25
+        config.timeoutIntervalForResource = 60
+        config.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        config.httpShouldSetCookies = false
+        config.httpCookieAcceptPolicy = .never
+        return URLSession(configuration: config,
+                          delegate: WebDAVTrustDelegate(),
+                          delegateQueue: nil)
+    }()
+
+    /// 合并重复斜杠、去掉尾斜杠，避免拼出 /books//a.txt
+    static func normalizeWebDAVPath(_ url: URL) -> URL {
+        guard var comps = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url }
+        var path = comps.path
+        while path.contains("//") {
+            path = path.replacingOccurrences(of: "//", with: "/")
+        }
+        if path.count > 1, path.hasSuffix("/") { path.removeLast() }
+        comps.path = path.isEmpty ? "/" : path
+        return comps.url ?? url
+    }
+
 
     // MARK: - 统一 browse 入口
 
@@ -253,9 +314,11 @@ enum OPDSSource {
     // MARK: - WebDAV
 
     static func fetchWebDAV(source: RemoteSource, url: String) async throws -> [SourceEntry] {
-        guard let target = HTTPClient.resolve(url, base: source.baseURL) else {
+        guard let raw = HTTPClient.resolve(url, base: source.baseURL) else {
             throw HTTPError.invalidURL(url)
         }
+        let target = normalizeWebDAVPath(raw)
+
         var request = URLRequest(url: target)
         request.httpMethod = "PROPFIND"
         request.setValue("1", forHTTPHeaderField: "Depth")
@@ -281,13 +344,21 @@ enum OPDSSource {
         }
         for (k, v) in source.headers { request.setValue(v, forHTTPHeaderField: k) }
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await webDAVSession.data(for: request)
+        } catch let error as URLError {
+            throw HTTPError.transport(describe(error, target: target))
+        }
         guard let http = response as? HTTPURLResponse else {
             throw HTTPError.transport("无 HTTP 响应")
         }
         // 207 Multi-Status 是 WebDAV 的正常返回
         guard (200..<300).contains(http.statusCode) else {
-            throw HTTPError.badStatus(http.statusCode)
+            throw HTTPError.transport(describe(status: http.statusCode,
+                                               headers: http.allHeaderFields,
+                                               target: target))
         }
         let xml = TextSanitizer.decode(data: data)?.text ?? ""
 
@@ -355,5 +426,54 @@ enum OPDSSource {
             }
         }
         return entries
+    }
+
+    // MARK: - WebDAV 错误说明
+
+    /// 把系统错误码翻成人能看懂、能直接照着改的提示
+    private static func describe(_ error: URLError, target: URL) -> String {
+        let host = target.host ?? ""
+        let port = target.port.map { ":\($0)" } ?? ""
+        switch error.code {
+        case .cannotFindHost, .dnsLookupFailed:
+            return "找不到主机 \(host)。请确认 NAS 的 IP 填写正确、手机和 NAS 在同一个局域网。"
+        case .cannotConnectToHost:
+            return "连不上 \(host)\(port)。请确认 WebDAV 服务已启动、端口没写错（群晖 HTTP 5005 / HTTPS 5006，威联通 5000 / 5001，Nextcloud 通常 80 / 443），并检查防火墙。"
+        case .timedOut:
+            return "连接 \(host)\(port) 超时。地址可能不对，或 NAS 拒绝了这个端口。"
+        case .notConnectedToInternet:
+            return "手机当前没有网络。"
+        case .networkConnectionLost:
+            return "连接被中断，请重试。"
+        case .secureConnectionFailed, .serverCertificateUntrusted, .serverCertificateHasBadDate:
+            return "\(host) 的 HTTPS 证书不被信任。自签证书需要确认地址用 https 且端口正确；也可以改用 HTTP 端口。"
+        case .unsupportedURL:
+            return "地址格式不对：\(target.absoluteString)"
+        default:
+            return "网络错误（\(error.code.rawValue)）：\(error.localizedDescription)"
+        }
+    }
+
+    private static func describe(status: Int, headers: [AnyHashable: Any], target: URL) -> String {
+        let authHeader = (headers.first { ($0.key as? String)?.lowercased() == "www-authenticate" }?.value as? String) ?? ""
+        switch status {
+        case 401:
+            if authHeader.lowercased().contains("digest") {
+                return "服务器要求 Digest 认证（401）。请在 NAS 的 WebDAV 设置里允许 Basic 认证，或改用其他端口/协议。"
+            }
+            return "认证失败（401）。请检查用户名和密码；群晖需要在「套件中心」安装并启动 WebDAV Server，且账号有该目录的访问权限。"
+        case 403:
+            return "没有权限（403）。这个账号对 \(target.path) 没有读取权限。"
+        case 404:
+            return "路径不存在（404）：\(target.path)。地址要指向 WebDAV 的根目录或其中的子目录，例如 http://192.168.1.100:5005/books"
+        case 405, 501:
+            return "服务器不接受 PROPFIND（\(status)）。这个地址可能不是 WebDAV 目录，或者被反向代理拦了。"
+        case 423:
+            return "目录被锁定（423），请稍后重试。"
+        case 507:
+            return "服务器存储不足（507）。"
+        default:
+            return "服务器返回 \(status)：\(target.absoluteString)"
+        }
     }
 }

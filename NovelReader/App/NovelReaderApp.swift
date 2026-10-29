@@ -56,6 +56,7 @@ struct NovelReaderApp: App {
 struct RootView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(AppState.self) private var appState
+    @State private var showSearch = false
 
     var body: some View {
         @Bindable var appState = appState
@@ -63,13 +64,18 @@ struct RootView: View {
 
         Group {
             switch appState.selectedTab {
-            case .library:   LibraryView()
-            case .discover:  DiscoverView()
+            case .library:  LibraryView()
+            case .settings: SettingsView()
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            OmniTabBar(selection: $appState.selectedTab, skin: skin)
+            OmniTabBar(selection: $appState.selectedTab, skin: skin) {
+                showSearch = true
+            }
+        }
+        .sheet(isPresented: $showSearch) {
+            DiscoverView(showsClose: true)
         }
         .tint(skin.accent)
         .environment(\.omniSkin, skin)

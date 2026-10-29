@@ -431,11 +431,12 @@ struct OmniEmptyState: View {
 
 /// 自绘底部悬浮胶囊。系统 TabView 的 appearance 只在创建时读取一次，
 /// 换肤后必须重建视图才会变色，所以这里完全用 SwiftUI 状态驱动。
-/// 只保留「书架 / 藏书阁」两页：有声与漫画已经在书架顶部的三段切换里，
-/// 书源管理移进了设置页，避免同一条导航重复出现。
+/// 只保留「书架 / 设置」两页：有声、漫画、书源都收进了书架顶端的分段里，
+/// 搜索交给右侧独立圆钮，避免同一条导航重复出现。
 struct OmniTabBar: View {
     @Binding var selection: AppState.Tab
     let skin: OmniSkin
+    var onSearch: () -> Void = {}
 
     private struct Item {
         let tab: AppState.Tab
@@ -445,7 +446,7 @@ struct OmniTabBar: View {
 
     private static let items: [Item] = [
         Item(tab: .library, title: "书架", symbol: "books.vertical.fill"),
-        Item(tab: .discover, title: "藏书阁", symbol: "sparkles"),
+        Item(tab: .settings, title: "设置", symbol: "gearshape.fill"),
     ]
 
     var body: some View {
@@ -491,9 +492,7 @@ struct OmniTabBar: View {
                     }
             }
 
-            Button {
-                selection = .discover
-            } label: {
+            Button(action: onSearch) {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 18, weight: .medium))
                     .foregroundStyle(skin.textPrimary)

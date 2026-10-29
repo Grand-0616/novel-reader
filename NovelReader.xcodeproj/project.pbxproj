@@ -60,6 +60,7 @@
 		AA000000000000000000030C /* ReadingStats.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000040C /* ReadingStats.swift */; };
 		AA000000000000000000030D /* SettingsSubpages.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000040D /* SettingsSubpages.swift */; };
 		AA000000000000000000030E /* ReaderBackdrop.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000040E /* ReaderBackdrop.swift */; };
+		AA000000000000000000030F /* ReaderFont.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000040F /* ReaderFont.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -118,6 +119,7 @@
 		AA000000000000000000040C /* ReadingStats.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingStats.swift; sourceTree = "<group>"; };
 		AA000000000000000000040D /* SettingsSubpages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsSubpages.swift; sourceTree = "<group>"; };
 		AA000000000000000000040E /* ReaderBackdrop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderBackdrop.swift; sourceTree = "<group>"; };
+		AA000000000000000000040F /* ReaderFont.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderFont.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -322,7 +324,9 @@
 			isa = PBXGroup;
 			children = (
 				AA0000000000000000000409 /* OmniDesign.swift */,
-			);
+			
+				AA000000000000000000040F /* ReaderFont.swift */,
+);
 			path = Design;
 			sourceTree = "<group>";
 		};
@@ -465,6 +469,7 @@
 				AA000000000000000000030C /* ReadingStats.swift in Sources */,
 				AA000000000000000000030D /* SettingsSubpages.swift in Sources */,
 				AA000000000000000000030E /* ReaderBackdrop.swift in Sources */,
+				AA000000000000000000030F /* ReaderFont.swift in Sources */,
 );
 			runOnlyForDeploymentPostprocessing = 0;
 		};

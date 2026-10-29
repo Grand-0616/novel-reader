@@ -48,10 +48,11 @@ struct ReaderLayout: Equatable {
     /// 顶部起排位置：安全区 + 一小段边距。
     /// 边距只按 30% 参与，剩下的空间全部留给正文——云书阁的正文是贴着
     /// 状态栏下方起排的，不留大片空白。
-    var topInset: CGFloat { max(insets.top, 20) + 14 + marginV }
+    var topInset: CGFloat { max(insets.top, 20) + 12 + marginV }
     /// 底部收排位置：安全区 + 一小段边距 + 页码行
     var bottomInset: CGFloat {
-        max(insets.bottom, 12) + marginV + (showsFooter ? Self.footerHeight + 4 : 6)
+        // 页脚是浮层，不再额外占位；只给一行页码留出视觉呼吸
+        max(insets.bottom, 12) + marginV + (showsFooter ? 4 : 2)
     }
 
     /// 正文可排版区域
@@ -125,7 +126,16 @@ struct ReaderView: View {
     }
 
     private var font: UIFont {
-        UIFont.systemFont(ofSize: appState.fontSize, weight: .regular)
+        ReaderFont.resolve(appState.fontFamily).uiFont(size: appState.fontSize)
+    }
+
+    /// 正文颜色跟着背景走：氛围背景不是主题色，直接用主题文字色会出现
+    /// 浅底浅字、深底深字的情况。
+    private var textUIColor: UIColor {
+        guard backdrop != .none else { return UIColor(theme.textColor) }
+        return backdrop.prefersLightText
+            ? UIColor(red: 0.95, green: 0.93, blue: 0.89, alpha: 1)
+            : UIColor(red: 0.14, green: 0.11, blue: 0.08, alpha: 1)
     }
 
     private var isScrollMode: Bool { appState.pageTurnStyle.isScrollMode }
@@ -544,7 +554,7 @@ struct ReaderView: View {
                 chromeButton(theme.isDark ? "日间" : "夜间",
                              theme.isDark ? "sun.max" : "moon",
                              enabled: true) {
-                    appState.theme = theme.isDark ? .paper : .dark
+                    toggleNightMode()
                 }
             }
         }
@@ -598,6 +608,19 @@ struct ReaderView: View {
             flash("已加书签")
         }
         isBookmarked = d.bool(forKey: bookmarkKey)
+    }
+
+    /// 夜间模式同时切换阅读主题与整体皮肤，避免正文变黑而外框还是白的。
+    private func toggleNightMode() {
+        if theme.isDark {
+            let back = UserDefaults.standard.string(forKey: "reader.daySkin") ?? OmniSkin.blueWhite.rawValue
+            appState.skin = OmniSkin(rawValue: back) ?? .blueWhite
+            appState.theme = .paper
+        } else {
+            UserDefaults.standard.set(appState.skin.rawValue, forKey: "reader.daySkin")
+            appState.skin = .classic
+            appState.theme = .dark
+        }
     }
 
     private func flash(_ message: String) {
@@ -782,7 +805,7 @@ struct ReaderView: View {
             text: chapterText,
             font: font,
             lineSpacing: appState.lineSpacing,
-            color: UIColor(theme.textColor))
+            color: textUIColor)
         chapterLength = attributed.length
         framesetter = CTFramesetterCreateWithAttributedString(attributed)
     }
@@ -900,6 +923,7 @@ struct ReaderSettingsPanel: View {
                 themeCard
             backdropCard
                 fontSizeCard
+            fontCard
                 sliderCard(title: "行距", value: $appState.lineSpacing, range: 0...20, step: 1)
                 sliderCard(title: "段距", value: $appState.paragraphSpacing, range: 0...24, step: 2)
                 marginCard
@@ -1062,6 +1086,40 @@ struct ReaderSettingsPanel: View {
         settingsCard(title, trailing: "\(Int(value.wrappedValue))") {
             Slider(value: value, in: range, step: step)
                 .tint(skin.accent)
+        }
+    }
+
+    private var fontCard: some View {
+        settingsCard("字体", trailing: ReaderFont.resolve(appState.fontFamily).displayName) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(ReaderFont.available) { item in
+                        let on = appState.fontFamily == item.rawValue
+                        Button {
+                            appState.fontFamily = item.rawValue
+                        } label: {
+                            VStack(spacing: 4) {
+                                Text("永")
+                                    .font(Font(item.uiFont(size: 20)))
+                                Text(item.displayName)
+                                    .font(.system(size: 10))
+                            }
+                            .foregroundStyle(on ? skin.accent : skin.textPrimary)
+                            .frame(width: 54, height: 54)
+                            .background {
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .fill(on ? skin.accent.opacity(0.14) : skin.surfaceAlt)
+                                    .overlay {
+                                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                            .strokeBorder(on ? skin.accent : .clear, lineWidth: 1)
+                                    }
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.vertical, 2)
+            }
         }
     }
 

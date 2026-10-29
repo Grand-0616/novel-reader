@@ -30,6 +30,7 @@ struct LibraryView: View {
     @State private var shelfKind: ShelfKind = .novel
     @State private var showSettings = false
     @State private var showSources = false
+    @State private var showDiscover = false
     @State private var groupFilter: ShelfGroup = .all
 
     enum SortMode: String, CaseIterable, Identifiable {
@@ -46,6 +47,7 @@ struct LibraryView: View {
         case novel = "小说"
         case comic = "漫画"
         case audio = "有声书"
+        case sources = "书源"
 
         var id: String { rawValue }
 
@@ -57,6 +59,8 @@ struct LibraryView: View {
                 return ["cbz", "cbr", "cb7", "cbt", "zip", "rar", "7z", "tar"]
             case .audio:
                 return ["mp3", "m4a", "m4b", "aac", "flac", "wav", "ogg", "opus"]
+            case .sources:
+                return []
             }
         }
     }
@@ -117,7 +121,9 @@ struct LibraryView: View {
             VStack(spacing: 0) {
                 header
                 Group {
-                    if books.isEmpty {
+                    if shelfKind == .sources {
+                        LegadoSourcesView(embedded: true)
+                    } else if books.isEmpty {
                         emptyState
                     } else {
                         bookGrid
@@ -142,7 +148,10 @@ struct LibraryView: View {
             .sheet(item: $selectedBook) { book in
                 BookDetailView(book: book)
             }
-            .sheet(isPresented: $showSources) {
+            .sheet(isPresented: $showDiscover) {
+            DiscoverView(showsClose: true)
+        }
+        .sheet(isPresented: $showSources) {
             NavigationStack { LegadoSourcesView() }
         }
         .sheet(isPresented: $showSettings) {
@@ -184,7 +193,7 @@ struct LibraryView: View {
     private var header: some View {
         HStack(spacing: 10) {
             Button {
-                appState.selectedTab = .discover
+                showDiscover = true
             } label: {
                 ZStack {
                     Circle().fill(skin.surface)

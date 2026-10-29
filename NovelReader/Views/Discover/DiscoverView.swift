@@ -32,6 +32,11 @@ struct DiscoverView: View {
     @State private var importMessage: String?
     @State private var showSearch = false
     @State private var showSources = false
+
+    /// 以 sheet 形式打开时，导航栏左上角要有一个关闭按钮
+    var showsClose: Bool = false
+
+    @Environment(\.dismiss) private var dismiss
     /// 书库里已有书的索引：用于给服务器列表打"已下载"标记
     @State private var libraryIndex = LibraryIndex()
 
@@ -132,7 +137,17 @@ struct DiscoverView: View {
 
     @ToolbarContentBuilder
     private var mainToolbar: some ToolbarContent {
-        ToolbarItem(placement: .topBarLeading) { sourceMenu }
+        if showsClose {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 15, weight: .semibold))
+                }
+            }
+        }
+        ToolbarItem(placement: showsClose ? .topBarTrailing : .topBarLeading) { sourceMenu }
         ToolbarItem(placement: .topBarTrailing) { trailingToolbarButton }
     }
 

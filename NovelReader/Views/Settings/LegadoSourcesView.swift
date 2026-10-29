@@ -10,6 +10,10 @@ import UniformTypeIdentifiers
 
 struct LegadoSourcesView: View {
 
+    /// 嵌进书架第四段时不要再套一层 NavigationStack，
+    /// 否则会出现双层导航栏，标题也被压到第二行。
+    var embedded: Bool = false
+
     @Environment(LegadoStore.self) private var store
     @Environment(\.omniSkin) private var skin
 
@@ -39,7 +43,16 @@ struct LegadoSourcesView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        if embedded {
+            coreBody
+        } else {
+            NavigationStack { coreBody }
+        }
+    }
+
+    private var coreBody: some View {
+        VStack(spacing: 0) {
+            if embedded { embeddedBar }
             Group {
                 if store.sources.isEmpty {
                     emptyState
@@ -47,6 +60,7 @@ struct LegadoSourcesView: View {
                     listContent
                 }
             }
+        }
             .background(skin.background)
             .navigationTitle("书源")
             .navigationBarTitleDisplayMode(.large)
@@ -94,6 +108,72 @@ struct LegadoSourcesView: View {
                 Text("此操作不可撤销，导出的 JSON 备份仍可重新导入。")
             }
         }
+    }
+
+    /// 内嵌时导航栏不可用，导入/导出入口改成页面顶部一行。
+    private var embeddedBar: some View {
+        HStack(spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 13))
+                    .foregroundStyle(skin.textSecondary)
+                TextField("搜索书源", text: $keyword)
+                    .font(.system(size: 14))
+                    .foregroundStyle(skin.textPrimary)
+                if !keyword.isEmpty {
+                    Button {
+                        keyword = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 13))
+                            .foregroundStyle(skin.textSecondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background {
+                Capsule().fill(skin.surfaceAlt)
+            }
+
+            Menu {
+                Button {
+                    showFileImporter = true
+                } label: {
+                    Label("导入 JSON 文件", systemImage: "doc.badge.plus")
+                }
+                Button {
+                    showPasteSheet = true
+                } label: {
+                    Label("粘贴 JSON", systemImage: "doc.on.clipboard")
+                }
+                Button {
+                    showURLSheet = true
+                } label: {
+                    Label("从网址导入", systemImage: "link")
+                }
+                if !store.sources.isEmpty {
+                    Divider()
+                    if let url = exportURL {
+                        ShareLink(item: url) {
+                            Label("导出书源", systemImage: "square.and.arrow.up")
+                        }
+                    }
+                    Button(role: .destructive) {
+                        showClearConfirm = true
+                    } label: {
+                        Label("清空全部", systemImage: "trash")
+                    }
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .font(.system(size: 20))
+                    .foregroundStyle(skin.accent)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 8)
     }
 
     // MARK: - 列表
