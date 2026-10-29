@@ -18,6 +18,9 @@ enum ReaderTheme: String, CaseIterable, Codable, Identifiable {
     case green      // 护眼绿
     case dark       // 夜间
     case black      // 纯黑（OLED）
+    case bilibili   // 哔哩哔哩深色
+    case blueWhite  // 蓝白
+    case shinChan   // 蜡笔小新
 
     var id: String { rawValue }
 
@@ -29,10 +32,13 @@ enum ReaderTheme: String, CaseIterable, Codable, Identifiable {
         case .green: return "护眼绿"
         case .dark:  return "夜间"
         case .black: return "纯黑"
+        case .bilibili: return "哔哩哔哩"
+        case .blueWhite: return "蓝白"
+        case .shinChan: return "蜡笔小新"
         }
     }
 
-    var isDark: Bool { self == .dark || self == .black }
+    var isDark: Bool { self == .dark || self == .black || self == .bilibili }
 
     var backgroundColor: Color {
         switch self {
@@ -42,6 +48,9 @@ enum ReaderTheme: String, CaseIterable, Codable, Identifiable {
         case .green: return Color(red: 0.80, green: 0.89, blue: 0.81)
         case .dark:  return Color(red: 0.10, green: 0.11, blue: 0.10)
         case .black: return Color.black
+        case .bilibili: return Color(hex: 0x12141A)
+        case .blueWhite: return OmniPalette.cream
+        case .shinChan: return Color(hex: 0xFDF3E3)
         }
     }
 
@@ -52,6 +61,9 @@ enum ReaderTheme: String, CaseIterable, Codable, Identifiable {
         case .green:         return Color(red: 0.15, green: 0.21, blue: 0.16)
         case .dark:          return Color(red: 0.78, green: 0.78, blue: 0.76)
         case .black:         return Color(red: 0.72, green: 0.72, blue: 0.72)
+        case .bilibili:      return Color(hex: 0xE6E4E1)
+        case .blueWhite:     return OmniPalette.ink3
+        case .shinChan:      return Color(hex: 0x2B2118)
         }
     }
 

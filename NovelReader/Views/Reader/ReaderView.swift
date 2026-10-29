@@ -68,6 +68,7 @@ struct ReaderView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AppState.self) private var appState
     @Environment(\.colorScheme) private var systemScheme
+    @Environment(\.omniSkin) private var skin
 
     let book: Book
 
@@ -319,21 +320,33 @@ struct ReaderView: View {
     // MARK: - 顶栏
 
     private var topBar: some View {
-        VStack(spacing: 6) {
-            HStack {
+        VStack(spacing: 8) {
+            HStack(spacing: 12) {
                 Button {
                     saveProgress()
                     dismiss()
                 } label: {
                     Image(systemName: "chevron.left")
-                        .font(.headline)
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(skin.accent)
+                        .frame(width: 34, height: 34)
+                        .contentShape(Rectangle())
                 }
-                Spacer()
-                VStack(spacing: 2) {
-                    Text(book.title).font(.subheadline.weight(.semibold)).lineLimit(1)
-                    Text(currentChapter?.title ?? "").font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                .buttonStyle(.plain)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(book.title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(skin.textPrimary)
+                        .lineLimit(1)
+                    Text(currentChapter?.title ?? "")
+                        .font(.caption2)
+                        .foregroundStyle(skin.textSecondary)
+                        .lineLimit(1)
                 }
-                Spacer()
+
+                Spacer(minLength: 8)
+
                 Menu {
                     Button { showChapterList = true } label: { Label("目录", systemImage: "list.bullet") }
                     Button { showSettings = true } label: { Label("排版", systemImage: "textformat.size") }
@@ -343,7 +356,11 @@ struct ReaderView: View {
                         } label: { Label("下载整本", systemImage: "arrow.down.circle") }
                     }
                 } label: {
-                    Image(systemName: "ellipsis.circle").font(.headline)
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(skin.accent)
+                        .frame(width: 34, height: 34)
+                        .contentShape(Rectangle())
                 }
             }
 
@@ -353,10 +370,10 @@ struct ReaderView: View {
                 HStack(spacing: 8) {
                     ProgressView(value: task.fraction)
                         .progressViewStyle(.linear)
-                        .tint(.accentColor)
+                        .tint(skin.accent)
                     Text(task.statusText)
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(skin.textSecondary)
                         .lineLimit(1)
                         .monospacedDigit()
                     Button {
@@ -364,25 +381,35 @@ struct ReaderView: View {
                     } label: {
                         Image(systemName: "xmark.circle.fill")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(skin.textSecondary)
                     }
                     .buttonStyle(.plain)
                 }
                 .transition(.opacity)
             }
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 10)
-        .background(.ultraThinMaterial)
+        .padding(.horizontal, 14)
+        .padding(.top, 4)
+        .padding(.bottom, 10)
+        .background {
+            skin.surface
+                .overlay(alignment: .bottom) {
+                    Rectangle().fill(skin.separator).frame(height: 0.5)
+                }
+                .ignoresSafeArea(edges: .top)
+        }
     }
 
     // MARK: - 底栏
 
     private var bottomBar: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 14) {
             // 整本书进度：拖动可快速跳到任意章节
             HStack(spacing: 10) {
-                Text("\(chapterIndex + 1)").font(.caption2).foregroundStyle(.secondary).monospacedDigit()
+                Text("\(chapterIndex + 1)")
+                    .font(.caption2)
+                    .foregroundStyle(skin.textSecondary)
+                    .monospacedDigit()
                 Slider(value: Binding(
                     get: { Double(chapterIndex) },
                     set: { newValue in
@@ -391,46 +418,58 @@ struct ReaderView: View {
                         goToChapter(target, offset: 0)
                     }
                 ), in: 0...Double(max(chapters.count - 1, 1)))
-                .tint(.accentColor)
-                Text("\(chapters.count)").font(.caption2).foregroundStyle(.secondary).monospacedDigit()
+                .tint(skin.accent)
+                Text("\(chapters.count)")
+                    .font(.caption2)
+                    .foregroundStyle(skin.textSecondary)
+                    .monospacedDigit()
             }
 
-            HStack {
-                Button {
+            HStack(spacing: 0) {
+                chromeButton("上一章", "chevron.up", enabled: chapterIndex > 0) {
                     goToChapter(max(chapterIndex - 1, 0), offset: 0)
-                } label: {
-                    Label("上一章", systemImage: "chevron.up")
                 }
-                .disabled(chapterIndex <= 0)
-
-                Spacer()
-
-                Button { showChapterList = true } label: {
-                    Label("目录", systemImage: "list.bullet")
+                chromeButton("目录", "list.bullet", enabled: true) {
+                    showChapterList = true
                 }
-
-                Spacer()
-
-                Button { showSettings = true } label: {
-                    Label("排版", systemImage: "textformat.size")
+                chromeButton("排版", "textformat.size", enabled: true) {
+                    showSettings = true
                 }
-
-                Spacer()
-
-                Button {
+                chromeButton("下一章", "chevron.down", enabled: chapterIndex < chapters.count - 1) {
                     goToChapter(min(chapterIndex + 1, max(chapters.count - 1, 0)), offset: 0)
-                } label: {
-                    Label("下一章", systemImage: "chevron.down")
                 }
-                .disabled(chapterIndex >= chapters.count - 1)
             }
-            .font(.footnote)
-            .labelStyle(.titleAndIcon)
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 12)
-        .padding(.bottom, 8)
-        .background(.ultraThinMaterial)
+        .padding(.horizontal, 18)
+        .padding(.top, 14)
+        .padding(.bottom, 6)
+        .background {
+            skin.surface
+                .overlay(alignment: .top) {
+                    Rectangle().fill(skin.separator).frame(height: 0.5)
+                }
+                .ignoresSafeArea(edges: .bottom)
+        }
+    }
+
+    /// 阅读器底栏工具按钮：图标在上、文字在下，禁用态压暗
+    private func chromeButton(_ title: String,
+                              _ symbol: String,
+                              enabled: Bool,
+                              action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 5) {
+                Image(systemName: symbol)
+                    .font(.system(size: 17, weight: .medium))
+                Text(title)
+                    .font(.system(size: 10))
+            }
+            .foregroundStyle(enabled ? skin.accent : skin.textSecondary.opacity(0.35))
+            .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
     }
 
     // MARK: - 手势
@@ -685,6 +724,7 @@ struct ReaderView: View {
 struct ReaderSettingsPanel: View {
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.omniSkin) private var skin
 
     /// true = 作为 sheet 弹出（自带导航栏与"完成"按钮）
     /// false = 嵌在其它导航栈里（如"我的 → 排版设置"），不再套一层 NavigationStack
@@ -728,7 +768,7 @@ struct ReaderSettingsPanel: View {
                                         .frame(width: 56, height: 56)
                                         .overlay {
                                             RoundedRectangle(cornerRadius: 8)
-                                                .strokeBorder(appState.theme == t ? Color.accentColor : Color.secondary.opacity(0.25),
+                                                .strokeBorder(appState.theme == t ? skin.accent : Color.secondary.opacity(0.25),
                                                               lineWidth: appState.theme == t ? 2 : 1)
                                             Text("Aa")
                                                 .font(.system(size: 17, weight: .medium, design: .serif))
@@ -736,7 +776,7 @@ struct ReaderSettingsPanel: View {
                                         }
                                     Text(t.displayName)
                                         .font(.caption2)
-                                        .foregroundStyle(appState.theme == t ? Color.accentColor : .secondary)
+                                        .foregroundStyle(appState.theme == t ? skin.accent : .secondary)
                                 }
                             }
                             .buttonStyle(.plain)
@@ -799,5 +839,7 @@ struct ReaderSettingsPanel: View {
                 }
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(skin.background)
     }
 }
