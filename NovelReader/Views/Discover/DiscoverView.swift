@@ -17,6 +17,7 @@ struct DiscoverView: View {
     @Environment(AppState.self) private var appState
     @Environment(SourceRegistry.self) private var registry
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.omniSkin) private var skin
 
     @State private var selectedSourceID: UUID?
     @State private var entries: [SourceEntry] = []
@@ -76,8 +77,11 @@ struct DiscoverView: View {
 
     private var titledContent: some View {
         mainContent
+            .background(skin.background)
             .navigationTitle(selectedSource?.name ?? "发现")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(skin.surface, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar { mainToolbar }
     }
 

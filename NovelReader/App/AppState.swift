@@ -98,11 +98,17 @@ enum PageTurnStyle: String, CaseIterable, Codable, Identifiable {
 @Observable
 @MainActor
 final class AppState {
+    /// 五个主 Tab，对齐云书阁的「书架 / 有声 / 书源 / 漫画 / 搜索」。
+    /// 设置页从书架页右上角头像进入，不占 Tab 位。
     enum Tab: Hashable {
-        case library, discover, sources, settings
+        case library, audiobook, sources, comic, discover
     }
 
     var selectedTab: Tab = .library
+
+    // ---- 界面皮肤 ----
+    /// 全局外观皮肤（云书阁式四套 + 跟随系统），与阅读页主题相互独立
+    var skin: OmniSkin = .classic { didSet { persist() } }
 
     // ---- 阅读外观（UserDefaults 持久化） ----
     // 说明：@Observable 宏会为每个存储属性生成 _prop / prop 访问器，
@@ -135,7 +141,7 @@ final class AppState {
     }
 
     var themeTint: Color {
-        Color.accentColor
+        skin.accent
     }
 
     func attach(context: ModelContext) {
@@ -165,6 +171,7 @@ final class AppState {
         static let marginV = "reader.marginV"
         static let followSystem = "reader.followSystem"
         static let showFooter = "reader.showFooter"
+        static let skin = "ui.skin"
     }
 
     private func persist() {
@@ -179,6 +186,7 @@ final class AppState {
         d.set(marginVertical, forKey: Keys.marginV)
         d.set(followSystemAppearance, forKey: Keys.followSystem)
         d.set(showFooter, forKey: Keys.showFooter)
+        d.set(skin.rawValue, forKey: Keys.skin)
     }
 
     private func loadSettings() {
@@ -192,6 +200,7 @@ final class AppState {
         if d.object(forKey: Keys.marginV) != nil { marginVertical = d.double(forKey: Keys.marginV) }
         followSystemAppearance = d.bool(forKey: Keys.followSystem)
         if d.object(forKey: Keys.showFooter) != nil { showFooter = d.bool(forKey: Keys.showFooter) }
+        if let raw = d.string(forKey: Keys.skin), let s = OmniSkin(rawValue: raw) { skin = s }
         loaded = true
     }
 

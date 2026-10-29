@@ -12,6 +12,7 @@ import UniformTypeIdentifiers
 struct LibraryView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(AppState.self) private var appState
+    @Environment(\.omniSkin) private var skin
     @Query(sort: [SortDescriptor(\Book.lastOpenedAt, order: .reverse),
                   SortDescriptor(\Book.createdAt, order: .reverse)])
     private var books: [Book]
@@ -25,12 +26,22 @@ struct LibraryView: View {
     @State private var errorMessage: String?
     @State private var selectedBook: Book?
     @State private var showSettings = false
+    @State private var groupFilter: ShelfGroup = .all
 
     enum SortMode: String, CaseIterable, Identifiable {
         case recent = "最近阅读"
         case added = "添加时间"
         case title = "书名"
         case author = "作者"
+        var id: String { rawValue }
+    }
+
+    /// 书架分组，对齐云书阁的书架分组条
+    enum ShelfGroup: String, CaseIterable, Identifiable {
+        case all = "全部"
+        case reading = "在读"
+        case favorites = "收藏"
+        case finished = "已读完"
         var id: String { rawValue }
     }
 
@@ -41,6 +52,16 @@ struct LibraryView: View {
             list = list.filter {
                 $0.title.lowercased().contains(q) || $0.author.lowercased().contains(q)
             }
+        }
+        switch groupFilter {
+        case .all:
+            break
+        case .reading:
+            list = list.filter { $0.readingProgress > 0.001 && $0.readingProgress < 0.999 }
+        case .favorites:
+            list = list.filter(\.isPinned)
+        case .finished:
+            list = list.filter { $0.readingProgress >= 0.999 }
         }
         switch sortMode {
         case .recent:
@@ -67,7 +88,10 @@ struct LibraryView: View {
                     bookGrid
                 }
             }
+            .background(skin.background)
             .navigationTitle("书架")
+            .toolbarBackground(skin.surface, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .searchable(text: $searchText, prompt: "搜索书名或作者")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -79,6 +103,13 @@ struct LibraryView: View {
                         }
                     } label: {
                         Image(systemName: "arrow.up.arrow.down")
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showSettings = true
+                    } label: {
+                        Image(systemName: "person.crop.circle")
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
@@ -123,6 +154,9 @@ struct LibraryView: View {
             .sheet(item: $selectedBook) { book in
                 BookDetailView(book: book)
             }
+            .sheet(isPresented: $showSettings) {
+                SettingsView()
+            }
             .overlay(alignment: .top) {
                 if let importMessage {
                     ImportBanner(message: importMessage)
@@ -157,35 +191,77 @@ struct LibraryView: View {
 
     private var bookGrid: some View {
         ScrollView {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 108, maximum: 140), spacing: 16)],
-                      spacing: 20) {
-                ForEach(filteredBooks) { book in
-                    Button {
-                        selectedBook = book
-                    } label: {
-                        BookCell(book: book)
-                    }
-                    .buttonStyle(.plain)
-                    .contextMenu {
+            VStack(spacing: 14) {
+                groupBar
+
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 104, maximum: 140), spacing: 16)],
+                          spacing: 20) {
+                    ForEach(filteredBooks) { book in
                         Button {
-                            book.isPinned.toggle()
-                            try? modelContext.save()
+                            selectedBook = book
                         } label: {
-                            Label(book.isPinned ? "取消置顶" : "置顶", systemImage: "pin")
+                            OmniBookCard(
+                                title: book.title,
+                                author: book.displayAuthor,
+                                coverData: book.coverData,
+                                progress: book.readingProgress,
+                                isPinned: book.isPinned
+                            )
                         }
-                        if let store = appState.store {
+                        .buttonStyle(.plain)
+                        .contextMenu {
                             Button {
-                                store.delete(book: book)
+                                book.isPinned.toggle()
+                                try? modelContext.save()
                             } label: {
-                                Label("删除", systemImage: "trash")
+                                Label(book.isPinned ? "取消置顶" : "置顶", systemImage: "pin")
+                            }
+                            if let store = appState.store {
+                                Button {
+                                    store.delete(book: book)
+                                } label: {
+                                    Label("删除", systemImage: "trash")
+                                }
                             }
                         }
                     }
                 }
+                .padding(.horizontal, 16)
             }
-            .padding(.horizontal, 16)
             .padding(.top, 8)
             .padding(.bottom, 40)
+        }
+        .background(skin.background)
+    }
+
+    /// 分组条：横向滚动的胶囊，选中态用主题主色
+    private var groupBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(ShelfGroup.allCases) { group in
+                    OmniChip(
+                        title: group.rawValue,
+                        count: count(for: group),
+                        isSelected: groupFilter == group
+                    ) {
+                        groupFilter = group
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+        }
+    }
+
+    private func count(for group: ShelfGroup) -> Int? {
+        switch group {
+        case .all:
+            return books.count
+        case .reading:
+            return books.filter { $0.readingProgress > 0.001 && $0.readingProgress < 0.999 }.count
+        case .favorites:
+            return books.filter(\.isPinned).count
+        case .finished:
+            return books.filter { $0.readingProgress >= 0.999 }.count
         }
     }
 
@@ -197,12 +273,13 @@ struct LibraryView: View {
                 Spacer(minLength: 60)
                 Image(systemName: "books.vertical")
                     .font(.system(size: 64, weight: .thin))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(skin.accent.opacity(0.75))
                 Text("书架还是空的")
                     .font(.title3.weight(.semibold))
-                Text("导入本地 TXT / EPUB，或连接你的 NAS 书库")
+                    .foregroundStyle(skin.textPrimary)
+                Text("导入本地 TXT / EPUB，或到「书源」添加站点后搜索")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(skin.textSecondary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 40)
 
@@ -211,23 +288,32 @@ struct LibraryView: View {
                         showImporter = true
                     } label: {
                         Label("从「文件」导入", systemImage: "folder.badge.plus")
+                            .font(.subheadline.weight(.semibold))
                             .frame(maxWidth: .infinity)
+                            .foregroundStyle(skin.background)
+                            .padding(.vertical, 12)
+                            .background(Capsule().fill(skin.accent))
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.plain)
 
                     Button {
                         appState.selectedTab = .sources
                     } label: {
-                        Label("添加 NAS 书源", systemImage: "externaldrive.connected.to.line.below")
+                        Label("添加书源", systemImage: "network")
+                            .font(.subheadline.weight(.semibold))
                             .frame(maxWidth: .infinity)
+                            .foregroundStyle(skin.accent)
+                            .padding(.vertical, 12)
+                            .background(Capsule().strokeBorder(skin.accent, lineWidth: 1))
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.plain)
                 }
                 .padding(.horizontal, 40)
                 Spacer()
             }
             .frame(maxWidth: .infinity)
         }
+        .background(skin.background)
     }
 
     // MARK: - 导入

@@ -13,6 +13,7 @@ struct BookDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(AppState.self) private var appState
     @Environment(SourceRegistry.self) private var registry
+    @Environment(\.omniSkin) private var skin
 
     let book: Book
 
@@ -36,9 +37,11 @@ struct BookDetailView: View {
                 }
                 .padding(.vertical, 16)
             }
-            .background(Color(.systemGroupedBackground))
+            .background(skin.background)
             .navigationTitle(book.title)
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(skin.surface, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("完成") { dismiss() }

@@ -13,6 +13,7 @@ struct SettingsView: View {
     @Environment(AppState.self) private var appState
     @Environment(SourceRegistry.self) private var registry
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.omniSkin) private var skin
 
     @State private var diskUsage: Int64 = 0
     @State private var bookCount = 0
@@ -24,6 +25,25 @@ struct SettingsView: View {
 
         NavigationStack {
             List {
+                // MARK: 主题外观
+                Section("主题外观") {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(OmniSkin.allCases) { skin in
+                                OmniChip(
+                                    title: skin.displayName,
+                                    isSelected: appState.skin == skin
+                                ) {
+                                    appState.skin = skin
+                                }
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                    .listRowBackground(Color.clear)
+                }
+
                 // MARK: 排版
                 Section("阅读外观") {
                     NavigationLink {
@@ -105,7 +125,11 @@ struct SettingsView: View {
                     }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(skin.background)
             .navigationTitle("我的")
+            .toolbarBackground(skin.surface, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .task { refresh() }
             .onAppear { refresh() }
             .overlay(alignment: .top) {

@@ -54,6 +54,9 @@
 		AA0000000000000000000306 /* LegadoRule.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000406 /* LegadoRule.swift */; };
 		AA0000000000000000000307 /* LegadoStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000407 /* LegadoStore.swift */; };
 		AA0000000000000000000308 /* LegadoSourcesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000408 /* LegadoSourcesView.swift */; };
+		AA0000000000000000000309 /* OmniDesign.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000409 /* OmniDesign.swift */; };
+		AA000000000000000000030A /* AudiobookView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000040A /* AudiobookView.swift */; };
+		AA000000000000000000030B /* ComicView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000040B /* ComicView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -106,6 +109,9 @@
 		AA0000000000000000000406 /* LegadoRule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegadoRule.swift; sourceTree = "<group>"; };
 		AA0000000000000000000407 /* LegadoStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegadoStore.swift; sourceTree = "<group>"; };
 		AA0000000000000000000408 /* LegadoSourcesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegadoSourcesView.swift; sourceTree = "<group>"; };
+		AA0000000000000000000409 /* OmniDesign.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OmniDesign.swift; sourceTree = "<group>"; };
+		AA000000000000000000040A /* AudiobookView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudiobookView.swift; sourceTree = "<group>"; };
+		AA000000000000000000040B /* ComicView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComicView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -160,7 +166,9 @@
 				AA0000000000000000000515 /* Views */,
 				AA0000000000000000000516 /* Resources */,
 				AA0000000000000000000302 /* Info.plist */,
-			);
+			
+				AA0000000000000000000603 /* Design */,
+);
 			path = NovelReader;
 			sourceTree = "<group>";
 		};
@@ -234,7 +242,10 @@
 				AA0000000000000000000520 /* Library */,
 				AA0000000000000000000521 /* Reader */,
 				AA0000000000000000000518 /* Settings */,
-			);
+			
+				AA0000000000000000000604 /* Audiobook */,
+				AA0000000000000000000605 /* Comic */,
+);
 			path = Views;
 			sourceTree = "<group>";
 		};
@@ -294,6 +305,30 @@
 				AA0000000000000000000407 /* LegadoStore.swift */,
 			);
 			path = Legado;
+			sourceTree = "<group>";
+		};
+		AA0000000000000000000603 /* Design */ = {
+			isa = PBXGroup;
+			children = (
+				AA0000000000000000000409 /* OmniDesign.swift */,
+			);
+			path = Design;
+			sourceTree = "<group>";
+		};
+		AA0000000000000000000604 /* Audiobook */ = {
+			isa = PBXGroup;
+			children = (
+				AA000000000000000000040A /* AudiobookView.swift */,
+			);
+			path = Audiobook;
+			sourceTree = "<group>";
+		};
+		AA0000000000000000000605 /* Comic */ = {
+			isa = PBXGroup;
+			children = (
+				AA000000000000000000040B /* ComicView.swift */,
+			);
+			path = Comic;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -413,6 +448,9 @@
 				AA0000000000000000000306 /* LegadoRule.swift in Sources */,
 				AA0000000000000000000307 /* LegadoStore.swift in Sources */,
 				AA0000000000000000000308 /* LegadoSourcesView.swift in Sources */,
+				AA0000000000000000000309 /* OmniDesign.swift in Sources */,
+				AA000000000000000000030A /* AudiobookView.swift in Sources */,
+				AA000000000000000000030B /* ComicView.swift in Sources */,
 );
 			runOnlyForDeploymentPostprocessing = 0;
 		};

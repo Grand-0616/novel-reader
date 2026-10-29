@@ -11,6 +11,7 @@ import UniformTypeIdentifiers
 struct LegadoSourcesView: View {
 
     @Environment(LegadoStore.self) private var store
+    @Environment(\.omniSkin) private var skin
 
     @State private var keyword = ""
     @State private var selectedGroup: String?
@@ -46,8 +47,11 @@ struct LegadoSourcesView: View {
                     listContent
                 }
             }
+            .background(skin.background)
             .navigationTitle("书源")
             .navigationBarTitleDisplayMode(.large)
+            .toolbarBackground(skin.surface, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .searchable(text: $keyword, prompt: "搜索书源名称或地址")
             .toolbar { toolbarContent }
             .sheet(isPresented: $showPasteSheet) { pasteSheet }
