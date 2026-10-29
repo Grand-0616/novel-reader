@@ -132,7 +132,7 @@ final class AppState {
     var pageTurnStyle: PageTurnStyle = .slide { didSet { persist() } }
     /// 页边距百分比
     var marginHorizontal: Double = 0.055 { didSet { persist() } }
-    var marginVertical: Double = 0.03 { didSet { persist() } }
+    var marginVertical: Double = 0.012 { didSet { persist() } }
     /// 跟随系统深色
     var followSystemAppearance: Bool = false { didSet { persist() } }
     /// 是否显示页脚（章节名 / 页码 / 进度）
@@ -223,7 +223,7 @@ final class AppState {
         paragraphSpacing = 10
         pageTurnStyle = .slide
         marginHorizontal = 0.055
-        marginVertical = 0.03
+        marginVertical = 0.012
         showFooter = true
     }
 }

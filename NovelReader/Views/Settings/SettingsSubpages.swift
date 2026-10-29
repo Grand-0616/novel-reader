@@ -366,3 +366,151 @@ struct SyncBackupView: View {
         .toolbarBackground(.visible, for: .navigationBar)
     }
 }
+
+// MARK: - 阅读统计
+
+struct ReadingStatsView: View {
+    @Environment(\.omniSkin) private var skin
+    @Query(sort: \Book.createdAt, order: .reverse) private var books: [Book]
+
+    private var week: [(date: Date, seconds: Double)] {
+        ReadingStats.dailySeconds(daysBack: 7)
+    }
+
+    private var weekMax: Double {
+        max(week.map(\.seconds).max() ?? 0, 60)
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 16) {
+                totalCard
+                weekCard
+                detailCard
+            }
+            .padding(.top, 8)
+            .padding(.bottom, 30)
+        }
+        .background(skin.background)
+        .navigationTitle("阅读统计")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(skin.surface, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+    }
+
+    private var totalCard: some View {
+        VStack(spacing: 10) {
+            Text(ReadingStats.text(minutes: ReadingStats.totalMinutes))
+                .font(.system(size: 34, weight: .semibold, design: .rounded))
+                .foregroundStyle(skin.textPrimary)
+            Text("累计阅读时长")
+                .font(.system(size: 12))
+                .foregroundStyle(skin.textSecondary)
+
+            HStack(spacing: 0) {
+                miniStat("本月", ReadingStats.text(minutes: ReadingStats.monthMinutes))
+                miniStat("今日", ReadingStats.text(minutes: ReadingStats.todayMinutes))
+                miniStat("连续", "\(ReadingStats.streak) 天")
+            }
+            .padding(.top, 6)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 22)
+        .background {
+            RoundedRectangle(cornerRadius: 16, style: .continuous).fill(skin.surface)
+        }
+        .padding(.horizontal, 16)
+    }
+
+    private func miniStat(_ label: String, _ value: String) -> some View {
+        VStack(spacing: 4) {
+            Text(value)
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(skin.textPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Text(label)
+                .font(.system(size: 11))
+                .foregroundStyle(skin.textSecondary)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var weekCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("最近 7 天")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(skin.textPrimary)
+
+            HStack(alignment: .bottom, spacing: 10) {
+                ForEach(Array(week.enumerated()), id: \.offset) { _, item in
+                    VStack(spacing: 6) {
+                        Text(shortMinutes(item.seconds))
+                            .font(.system(size: 9))
+                            .foregroundStyle(skin.textSecondary)
+                            .lineLimit(1)
+
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .fill(item.seconds > 0 ? skin.accent : skin.surfaceAlt)
+                            .frame(height: max(4, CGFloat(item.seconds / weekMax) * 92))
+
+                        Text(weekdayLabel(item.date))
+                            .font(.system(size: 10))
+                            .foregroundStyle(skin.textSecondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+            }
+            .frame(height: 130, alignment: .bottom)
+        }
+        .padding(16)
+        .background {
+            RoundedRectangle(cornerRadius: 16, style: .continuous).fill(skin.surface)
+        }
+        .padding(.horizontal, 16)
+    }
+
+    private var detailCard: some View {
+        VStack(spacing: 0) {
+            detailRow("有记录的天数", "\(ReadingStats.activeDays) 天")
+            Rectangle().fill(skin.separator).frame(height: 0.5)
+            detailRow("在读", "\(books.filter { $0.readingProgress > 0.001 && $0.readingProgress < 0.999 }.count) 本")
+            Rectangle().fill(skin.separator).frame(height: 0.5)
+            detailRow("已读完", "\(books.filter { $0.readingProgress >= 0.999 }.count) 本")
+            Rectangle().fill(skin.separator).frame(height: 0.5)
+            detailRow("藏书总量", "\(books.count) 本")
+        }
+        .background {
+            RoundedRectangle(cornerRadius: 16, style: .continuous).fill(skin.surface)
+        }
+        .padding(.horizontal, 16)
+    }
+
+    private func detailRow(_ title: String, _ value: String) -> some View {
+        HStack {
+            Text(title)
+                .font(.system(size: 14))
+                .foregroundStyle(skin.textPrimary)
+            Spacer()
+            Text(value)
+                .font(.system(size: 14))
+                .foregroundStyle(skin.textSecondary)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 13)
+    }
+
+    private func shortMinutes(_ seconds: Double) -> String {
+        if seconds < 60 { return seconds > 0 ? "<1" : "0" }
+        let m = Int((seconds / 60).rounded())
+        if m < 60 { return "\(m)" }
+        return "\(m / 60)h"
+    }
+
+    private func weekdayLabel(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "zh_CN")
+        f.dateFormat = "EEE"
+        return f.string(from: date).replacingOccurrences(of: "周", with: "")
+    }
+}

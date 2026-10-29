@@ -49,6 +49,10 @@ enum ReadingStats {
         }
         d.set(d.double(forKey: todayKey) + minutes, forKey: todayKey)
 
+        // 每日秒级明细，给「阅读统计」页画柱状图用（分钟级会丢精度）
+        let dailyKey = "stats.daily.\(dayTag())"
+        d.set(d.double(forKey: dailyKey) + seconds, forKey: dailyKey)
+
         updateStreak(d)
     }
 
@@ -82,6 +86,25 @@ enum ReadingStats {
 
     static var streak: Int {
         UserDefaults.standard.integer(forKey: streakKey)
+    }
+
+    /// 最近 N 天每天的阅读秒数（含今天，时间正序）
+    static func dailySeconds(daysBack: Int) -> [(date: Date, seconds: Double)] {
+        let d = UserDefaults.standard
+        var out: [(Date, Double)] = []
+        for offset in stride(from: max(daysBack - 1, 0), through: 0, by: -1) {
+            guard let date = calendar.date(byAdding: .day, value: -offset, to: Date()) else { continue }
+            let key = "stats.daily.\(dayTag(date))"
+            out.append((date, d.double(forKey: key)))
+        }
+        return out
+    }
+
+    /// 有阅读记录的天数
+    static var activeDays: Int {
+        UserDefaults.standard.dictionaryRepresentation().keys
+            .filter { $0.hasPrefix("stats.daily.") }
+            .count
     }
 
     /// "1 分钟" / "1 小时 20 分钟"

@@ -14,6 +14,7 @@ struct SettingsView: View {
     @Environment(SourceRegistry.self) private var registry
     @Environment(\.modelContext) private var modelContext
     @Environment(\.omniSkin) private var skin
+    @Environment(LegadoStore.self) private var legadoStore
 
     @Query(sort: \Book.createdAt, order: .reverse) private var books: [Book]
 
@@ -26,7 +27,12 @@ struct SettingsView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
-                    overviewCard
+                    NavigationLink {
+                        ReadingStatsView()
+                    } label: {
+                        overviewCard
+                    }
+                    .buttonStyle(.plain)
                     mainGroup
                     groupTitle("数据与存储")
                     dataGroup
@@ -258,7 +264,7 @@ struct SettingsView: View {
                 LegadoSourcesView()
             } label: {
                 settingsRow("书源管理", icon: "square.and.arrow.down.fill", tint: Color(hex: 0x34C759),
-                            value: "\(registry.sources.count) 个")
+                            value: "\(legadoStore.sources.count) 个")
             }
             .buttonStyle(.plain)
 

@@ -16,6 +16,7 @@
 import SwiftUI
 import SwiftData
 import CoreText
+import UIKit
 
 // MARK: - 阅读器布局度量
 //
@@ -47,10 +48,10 @@ struct ReaderLayout: Equatable {
     /// 顶部起排位置：安全区 + 一小段边距。
     /// 边距只按 30% 参与，剩下的空间全部留给正文——云书阁的正文是贴着
     /// 状态栏下方起排的，不留大片空白。
-    var topInset: CGFloat { max(insets.top, 20) + marginV * 0.30 }
+    var topInset: CGFloat { max(insets.top, 20) + 16 + marginV * 0.40 }
     /// 底部收排位置：安全区 + 一小段边距 + 页码行
     var bottomInset: CGFloat {
-        max(insets.bottom, 16) + marginV * 0.30 + (showsFooter ? Self.footerHeight : 0)
+        max(insets.bottom, 12) + marginV * 0.40 + (showsFooter ? Self.footerHeight + 6 : 8)
     }
 
     /// 正文可排版区域
@@ -85,6 +86,9 @@ struct ReaderView: View {
     @State private var paginationSize: CGSize = .zero
     @State private var isBookmarked = false
     @State private var sessionStart: Date?
+    @State private var showBrightness = false
+    @AppStorage("reader.backdrop") private var backdropRaw = ReaderBackdrop.none.rawValue
+    @AppStorage("reader.warmFilter") private var warmFilter = false
     @State private var hint: String?
     /// 当前生效的布局度量，供边距变化时重算尺寸
     @State private var currentLayout: ReaderLayout?
@@ -126,6 +130,10 @@ struct ReaderView: View {
 
     private var isScrollMode: Bool { appState.pageTurnStyle.isScrollMode }
 
+    private var backdrop: ReaderBackdrop {
+        ReaderBackdrop(rawValue: backdropRaw) ?? .none
+    }
+
     var body: some View {
         GeometryReader { geo in
             let layout = ReaderLayout(size: geo.size,
@@ -135,7 +143,8 @@ struct ReaderView: View {
                                       showsFooter: appState.showFooter)
 
             ZStack(alignment: .topLeading) {
-                theme.backgroundColor.ignoresSafeArea()
+                ReaderBackdropView(style: backdrop, theme: theme)
+                    .ignoresSafeArea()
 
                 if isScrollMode {
                     // 上下滑动：整章连续排版，交给 UIScrollView 滚
@@ -154,13 +163,27 @@ struct ReaderView: View {
                 if appState.showFooter {
                     footer(layout: layout)
                 }
+
+                // 全屏点击层：正文由 CoreTextPageView（UIView）承载，
+                // 即使挂过 allowsHitTesting(false)，点击在部分 iOS 版本上仍会被
+                // UIView 吃掉，表现为"只有正文之外的空白处能呼出工具栏"。
+                // 统一在这一层收点击与左右滑动，屏幕任何位置都能呼出/收起工具栏。
+                // 上下滑动模式不能盖这一层，否则 UIScrollView 收不到滚动。
+                if !isScrollMode {
+                    Color.clear
+                        .contentShape(Rectangle())
+                        // highPriorityGesture 是必须的：和 DragGesture 同时挂载时
+                        // 普通 onTapGesture 会被 drag 的识别过程吞掉，表现为
+                        // "点一下只闪一下、工具栏状态不翻转"。
+                        .highPriorityGesture(
+                            SpatialTapGesture()
+                                .onEnded { value in
+                                    handleTap(location: value.location, size: geo.size)
+                                }
+                        )
+                        .gesture(swipeGesture(width: geo.size.width))
+                }
             }
-            .contentShape(Rectangle())
-            // 滚动模式下不能抢手势，点击检测交给 overlay 层
-            .onTapGesture { location in
-                handleTap(location: location, size: geo.size)
-            }
-            .gesture(isScrollMode ? nil : swipeGesture(width: geo.size.width))
             .onAppear {
                 applyLayout(layout)
                 loadInitial()
@@ -179,6 +202,14 @@ struct ReaderView: View {
         .persistentSystemOverlays(.automatic)
         .overlay(alignment: .top) { if showChrome { topBar } }
         .overlay(alignment: .bottom) { if showChrome { bottomBar } }
+        .overlay {
+            if warmFilter {
+                Color(hex: 0xFF9A3C)
+                    .opacity(0.10)
+                    .ignoresSafeArea()
+                    .allowsHitTesting(false)
+            }
+        }
         .overlay(alignment: .center) {
             if let hint {
                 Text(hint)
@@ -192,6 +223,11 @@ struct ReaderView: View {
         }
         .sheet(isPresented: $showSettings) {
             ReaderSettingsPanel()
+        }
+        .sheet(isPresented: $showBrightness) {
+            BrightnessPanel()
+                .presentationDetents([.height(280)])
+                .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showChapterList) {
             ChapterListView(book: book) { idx in
@@ -340,7 +376,7 @@ struct ReaderView: View {
             .font(.system(size: 11))
             .foregroundStyle(theme.secondaryTextColor)
             .padding(.horizontal, layout.marginH)
-            .padding(.top, max(layout.insets.top, 20) - 4)
+            .padding(.top, max(layout.insets.top, 20) + 1)
 
             Spacer(minLength: 0)
 
@@ -497,7 +533,7 @@ struct ReaderView: View {
                     showChapterList = true
                 }
                 chromeButton("亮度", "sun.min", enabled: true) {
-                    showSettings = true
+                    showBrightness = true
                 }
                 chromeButton("听书", "headphones", enabled: true) {
                     flash("听书功能还没接上")
@@ -824,6 +860,12 @@ struct ReaderSettingsPanel: View {
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
     @Environment(\.omniSkin) private var skin
+    @AppStorage("reader.backdrop") private var backdropRaw = ReaderBackdrop.none.rawValue
+    @AppStorage("reader.warmFilter") private var warmFilter = false
+
+    private var backdrop: ReaderBackdrop {
+        ReaderBackdrop(rawValue: backdropRaw) ?? .none
+    }
 
     /// true = 作为 sheet 弹出（自带导航栏与"完成"按钮）
     /// false = 嵌在其它导航栈里（如"我的 → 排版设置"），不再套一层 NavigationStack
@@ -856,6 +898,7 @@ struct ReaderSettingsPanel: View {
         ScrollView {
             VStack(spacing: 12) {
                 themeCard
+            backdropCard
                 fontSizeCard
                 sliderCard(title: "行距", value: $appState.lineSpacing, range: 0...20, step: 1)
                 sliderCard(title: "段距", value: $appState.paragraphSpacing, range: 0...24, step: 2)
@@ -930,6 +973,45 @@ struct ReaderSettingsPanel: View {
                                 Text(item.displayName)
                                     .font(.system(size: 10))
                                     .foregroundStyle(appState.theme == item ? skin.accent : skin.textSecondary)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+        }
+    }
+
+    private var backdropCard: some View {
+        settingsCard("阅读背景", trailing: backdrop.displayName) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(ReaderBackdrop.allCases) { item in
+                        Button {
+                            backdropRaw = item.rawValue
+                            // 深色插画背景配黑字会看不清，顺手把主题切到深色
+                            if item.prefersLightText && !appState.theme.isDark {
+                                appState.theme = .dark
+                            }
+                        } label: {
+                            VStack(spacing: 6) {
+                                ReaderBackdropView(style: item, theme: appState.theme)
+                                    .frame(width: 52, height: 68)
+                                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                    .overlay {
+                                        Text("Aa")
+                                            .font(.system(size: 15, weight: .medium, design: .serif))
+                                            .foregroundStyle(item.prefersLightText ? Color.white : Color(hex: 0x2B2118))
+                                    }
+                                    .overlay {
+                                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                            .strokeBorder(backdrop == item ? skin.accent : skin.separator,
+                                                          lineWidth: backdrop == item ? 2 : 1)
+                                    }
+                                Text(item.displayName)
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(backdrop == item ? skin.accent : skin.textSecondary)
                             }
                         }
                         .buttonStyle(.plain)
@@ -1088,5 +1170,61 @@ struct ReaderSettingsPanel: View {
                 }
         }
         .buttonStyle(.plain)
+    }
+}
+// MARK: - 亮度 / 护眼
+
+struct BrightnessPanel: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.omniSkin) private var skin
+    @AppStorage("reader.warmFilter") private var warmFilter = false
+    @State private var brightness: Double = Double(UIScreen.main.brightness)
+
+    var body: some View {
+        VStack(spacing: 18) {
+            HStack {
+                Text("亮度")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(skin.textPrimary)
+                Spacer()
+                Button("完成") { dismiss() }
+                    .font(.system(size: 15))
+                    .foregroundStyle(skin.accent)
+            }
+
+            HStack(spacing: 12) {
+                Image(systemName: "sun.min")
+                    .font(.system(size: 14))
+                    .foregroundStyle(skin.textSecondary)
+                Slider(value: $brightness, in: 0...1) { _ in
+                    UIScreen.main.brightness = CGFloat(brightness)
+                }
+                .tint(skin.accent)
+                Image(systemName: "sun.max.fill")
+                    .font(.system(size: 16))
+                    .foregroundStyle(skin.accent)
+            }
+
+            HStack {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("护眼模式")
+                        .font(.system(size: 15))
+                        .foregroundStyle(skin.textPrimary)
+                    Text("给整屏叠一层暖色，夜里看更柔")
+                        .font(.system(size: 11))
+                        .foregroundStyle(skin.textSecondary)
+                }
+                Spacer()
+                Toggle("", isOn: $warmFilter)
+                    .labelsHidden()
+                    .tint(skin.accent)
+            }
+            .padding(.vertical, 2)
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 18)
+        .background(skin.background)
     }
 }
