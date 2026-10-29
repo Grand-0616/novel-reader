@@ -15,3 +15,6 @@ tools/.e2e-sandbox/
 *.p12
 *.mobileprovision
 ExportOptions.plist
+
+# Xcode 工程备份
+NovelReader.xcodeproj/*.bak

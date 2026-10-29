@@ -102,12 +102,14 @@ struct LegadoSourcesView: View {
         List {
             Section {
                 summaryRow
+                    .listRowBackground(skin.surface)
             }
 
             if !store.groups.isEmpty {
                 Section {
                     groupChips
                         .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
+                        .listRowBackground(skin.surface)
                 }
             }
 
@@ -118,6 +120,7 @@ struct LegadoSourcesView: View {
                     } label: {
                         sourceRow(source)
                     }
+                    .listRowBackground(skin.surface)
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                         Button(role: .destructive) {
                             pendingDelete = source
@@ -142,6 +145,8 @@ struct LegadoSourcesView: View {
             }
         }
         .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(skin.background)
     }
 
     private var summaryRow: some View {
@@ -158,8 +163,11 @@ struct LegadoSourcesView: View {
 
     private func metric(value: String, label: String) -> some View {
         VStack(spacing: 2) {
-            Text(value).font(.title3.weight(.semibold)).monospacedDigit()
-            Text(label).font(.caption).foregroundStyle(.secondary)
+            Text(value)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(skin.textPrimary)
+                .monospacedDigit()
+            Text(label).font(.caption).foregroundStyle(skin.textSecondary)
         }
         .frame(maxWidth: .infinity)
     }
@@ -186,9 +194,9 @@ struct LegadoSourcesView: View {
                 .font(.subheadline)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
-                .background(active ? Color.accentColor.opacity(0.18) : Color.secondary.opacity(0.12),
+                .background(active ? skin.accent.opacity(0.18) : skin.surfaceAlt,
                             in: Capsule())
-                .foregroundStyle(active ? Color.accentColor : Color.primary)
+                .foregroundStyle(active ? skin.accent : skin.textPrimary)
         }
         .buttonStyle(.plain)
     }
@@ -204,37 +212,38 @@ struct LegadoSourcesView: View {
                 HStack(spacing: 6) {
                     Text(source.bookSourceName)
                         .font(.body)
+                        .foregroundStyle(skin.textPrimary)
                         .lineLimit(1)
                     if !source.enabled {
                         Text("已停用")
                             .font(.caption2)
                             .padding(.horizontal, 5)
                             .padding(.vertical, 1)
-                            .background(Color.secondary.opacity(0.15), in: Capsule())
-                            .foregroundStyle(.secondary)
+                            .background(skin.surfaceAlt, in: Capsule())
+                            .foregroundStyle(skin.textSecondary)
                     }
                 }
                 HStack(spacing: 6) {
                     Text(source.type.displayName)
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(skin.textSecondary)
                     if let group = source.bookSourceGroup, !group.isEmpty {
-                        Text("·").font(.caption2).foregroundStyle(.secondary)
+                        Text("·").font(.caption2).foregroundStyle(skin.textSecondary)
                         Text(group)
                             .font(.caption2)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(skin.textSecondary)
                             .lineLimit(1)
                     }
                 }
                 if case .incomplete(let reason) = source.readiness {
                     Text(reason)
                         .font(.caption2)
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(OmniPalette.warning)
                         .lineLimit(2)
                 } else if case .invalid(let reason) = source.readiness {
                     Text(reason)
                         .font(.caption2)
-                        .foregroundStyle(.red)
+                        .foregroundStyle(OmniPalette.danger)
                         .lineLimit(2)
                 }
             }
@@ -244,25 +253,68 @@ struct LegadoSourcesView: View {
 
     private func readinessColor(_ readiness: LegadoReadiness) -> Color {
         switch readiness {
-        case .ready:      return .green
-        case .incomplete: return .orange
-        case .invalid:    return .red
+        case .ready:      return OmniPalette.success
+        case .incomplete: return OmniPalette.warning
+        case .invalid:    return OmniPalette.danger
         }
     }
 
     // MARK: - 空状态
 
     private var emptyState: some View {
-        ContentUnavailableView {
-            Label("还没有书源", systemImage: "books.vertical")
-        } description: {
-            Text("导入 Legado 格式的书源 JSON 后，就能搜索几百个站点。")
-        } actions: {
-            Button("导入 JSON 文件") { showFileImporter = true }
-                .buttonStyle(.borderedProminent)
-            Button("粘贴 JSON") { showPasteSheet = true }
-            Button("从网址导入") { showURLSheet = true }
+        ScrollView {
+            VStack(spacing: 18) {
+                Spacer(minLength: 50)
+                Image(systemName: "books.vertical")
+                    .font(.system(size: 60, weight: .thin))
+                    .foregroundStyle(skin.accent.opacity(0.75))
+                Text("还没有书源")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(skin.textPrimary)
+                Text("导入 Legado 格式的书源 JSON 后，就能搜索几百个站点。")
+                    .font(.subheadline)
+                    .foregroundStyle(skin.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 36)
+
+                VStack(spacing: 12) {
+                    Button {
+                        showFileImporter = true
+                    } label: {
+                        Label("导入 JSON 文件", systemImage: "doc.badge.plus")
+                            .font(.subheadline.weight(.semibold))
+                            .frame(maxWidth: .infinity)
+                            .foregroundStyle(skin.background)
+                            .padding(.vertical, 12)
+                            .background(Capsule().fill(skin.accent))
+                    }
+                    .buttonStyle(.plain)
+
+                    HStack(spacing: 10) {
+                        outlineButton("粘贴 JSON", "doc.on.clipboard") { showPasteSheet = true }
+                        outlineButton("从网址导入", "link") { showURLSheet = true }
+                    }
+                }
+                .padding(.horizontal, 36)
+                Spacer()
+            }
+            .frame(maxWidth: .infinity)
         }
+        .background(skin.background)
+    }
+
+    private func outlineButton(_ title: String,
+                               _ symbol: String,
+                               action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: symbol)
+                .font(.subheadline.weight(.medium))
+                .frame(maxWidth: .infinity)
+                .foregroundStyle(skin.accent)
+                .padding(.vertical, 11)
+                .background(Capsule().strokeBorder(skin.accent, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - 工具栏
@@ -325,20 +377,25 @@ struct LegadoSourcesView: View {
             VStack(spacing: 0) {
                 TextEditor(text: $pasteText)
                     .font(.system(.footnote, design: .monospaced))
+                    .foregroundStyle(skin.textPrimary)
+                    .scrollContentBackground(.hidden)
                     .padding(8)
                     .overlay(alignment: .topLeading) {
                         if pasteText.isEmpty {
                             Text("粘贴 Legado 书源 JSON（数组或单个对象）")
                                 .font(.footnote)
-                                .foregroundStyle(.tertiary)
+                                .foregroundStyle(skin.textSecondary)
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 16)
                                 .allowsHitTesting(false)
                         }
                     }
             }
+            .background(skin.background)
             .navigationTitle("粘贴书源")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(skin.surface, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("取消") { showPasteSheet = false }
@@ -365,8 +422,12 @@ struct LegadoSourcesView: View {
                     Text("拉取远端 JSON 并合并进本地书源，相同地址会覆盖。")
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(skin.background)
             .navigationTitle("从网址导入")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(skin.surface, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("取消") { showURLSheet = false }
@@ -443,6 +504,7 @@ struct LegadoSourcesView: View {
 struct LegadoSourceDetailView: View {
 
     @Environment(LegadoStore.self) private var store
+    @Environment(\.omniSkin) private var skin
 
     let source: LegadoBookSource
 
@@ -462,6 +524,7 @@ struct LegadoSourceDetailView: View {
                     labeled("备注", comment)
                 }
             }
+            .listRowBackground(skin.surface)
 
             Section("能力") {
                 capability("搜索", ok: (current.ruleSearch?.isUsable ?? false))
@@ -471,13 +534,16 @@ struct LegadoSourceDetailView: View {
                 capability("登录", ok: !(current.loginUrl ?? "").isEmpty)
                 capability("脚本库", ok: !(current.jsLib ?? "").isEmpty)
             }
+            .listRowBackground(skin.surface)
 
             if let searchURL = current.searchUrl, !searchURL.isEmpty {
                 Section("搜索地址") {
                     Text(searchURL)
                         .font(.system(.footnote, design: .monospaced))
+                        .foregroundStyle(skin.textSecondary)
                         .textSelection(.enabled)
                 }
+                .listRowBackground(skin.surface)
             }
 
             Section {
@@ -489,18 +555,25 @@ struct LegadoSourceDetailView: View {
                         store.update(copy)
                     }
                 ))
+                .tint(skin.accent)
             }
+            .listRowBackground(skin.surface)
         }
+        .scrollContentBackground(.hidden)
+        .background(skin.background)
         .navigationTitle(current.bookSourceName)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(skin.surface, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
     }
 
     private func labeled(_ title: String, _ value: String, mono: Bool = false) -> some View {
         HStack(alignment: .top) {
             Text(title)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(skin.textSecondary)
             Spacer(minLength: 12)
             Text(value.isEmpty ? "—" : value)
+                .foregroundStyle(skin.textPrimary)
                 .multilineTextAlignment(.trailing)
                 .font(mono ? .system(.footnote, design: .monospaced) : .footnote)
                 .textSelection(.enabled)
@@ -509,10 +582,10 @@ struct LegadoSourceDetailView: View {
 
     private func capability(_ title: String, ok: Bool) -> some View {
         HStack {
-            Text(title)
+            Text(title).foregroundStyle(skin.textPrimary)
             Spacer()
             Image(systemName: ok ? "checkmark.circle.fill" : "minus.circle")
-                .foregroundStyle(ok ? Color.green : Color.secondary)
+                .foregroundStyle(ok ? OmniPalette.success : skin.textSecondary)
         }
     }
 }

@@ -9,6 +9,7 @@ import SwiftUI
 
 struct SourcesView: View {
     @Environment(SourceRegistry.self) private var registry
+    @Environment(\.omniSkin) private var skin
 
     @State private var editing: RemoteSource?
     @State private var showEditor = false
@@ -29,6 +30,7 @@ struct SourcesView: View {
                             row(source)
                         }
                         .buttonStyle(.plain)
+                        .listRowBackground(skin.surface)
                         .swipeActions(edge: .trailing) {
                             Button(role: .destructive) {
                                 registry.remove(source)
@@ -94,7 +96,11 @@ struct SourcesView: View {
                     .padding(.vertical, 4)
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(skin.background)
             .navigationTitle("书源")
+            .toolbarBackground(skin.surface, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .sheet(item: $editing) { source in
                 SourceEditorView(source: source, isNew: !registry.sources.contains(where: { $0.id == source.id }))
             }
@@ -132,27 +138,30 @@ struct SourcesView: View {
             Image(systemName: source.kind.symbolName)
                 .font(.title3)
                 .frame(width: 28)
-                .foregroundStyle(source.isEnabled ? Color.accentColor : Color.secondary)
+                .foregroundStyle(source.isEnabled ? skin.accent : skin.textSecondary)
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
-                    Text(source.name).font(.subheadline.weight(.medium))
+                    Text(source.name)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(skin.textPrimary)
                     if !source.isEnabled {
                         Text("已停用")
                             .font(.caption2)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 1)
-                            .background(Color.secondary.opacity(0.15), in: Capsule())
+                            .background(skin.surfaceAlt, in: Capsule())
+                            .foregroundStyle(skin.textSecondary)
                     }
                 }
                 Text(source.baseURL)
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(skin.textSecondary)
                     .lineLimit(1)
                 if !source.lastCheckMessage.isEmpty {
                     Text(source.lastCheckMessage)
                         .font(.caption2)
-                        .foregroundStyle(source.lastCheckOK ? .green : .orange)
+                        .foregroundStyle(source.lastCheckOK ? OmniPalette.success : OmniPalette.warning)
                         .lineLimit(1)
                 }
             }
@@ -160,7 +169,7 @@ struct SourcesView: View {
             if checkStates[source.id] == true {
                 ProgressView().scaleEffect(0.7)
             } else {
-                Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
+                Image(systemName: "chevron.right").font(.caption).foregroundStyle(skin.textSecondary)
             }
         }
         .contentShape(Rectangle())
@@ -168,8 +177,12 @@ struct SourcesView: View {
 
     private func tip(_ title: String, _ detail: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(title).font(.caption.weight(.semibold))
-            Text(detail).font(.caption2).foregroundStyle(.secondary)
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(skin.textPrimary)
+            Text(detail)
+                .font(.caption2)
+                .foregroundStyle(skin.textSecondary)
         }
     }
 
@@ -199,6 +212,7 @@ struct SourcesView: View {
 struct SourceEditorView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(SourceRegistry.self) private var registry
+    @Environment(\.omniSkin) private var skin
 
     @State var source: RemoteSource
     let isNew: Bool
@@ -261,8 +275,12 @@ struct SourceEditorView: View {
                 }
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(skin.background)
         .navigationTitle(isNew ? "新增书源" : "编辑书源")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(skin.surface, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("取消") { dismiss() }
@@ -336,6 +354,7 @@ struct SourceEditorView: View {
 struct SourceImportView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(SourceRegistry.self) private var registry
+    @Environment(\.omniSkin) private var skin
 
     @State private var text = ""
     @State private var errorMessage: String?
@@ -364,8 +383,12 @@ struct SourceImportView: View {
                 .disabled(text.isEmpty)
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(skin.background)
         .navigationTitle("导入书源")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(skin.surface, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("关闭") { dismiss() }

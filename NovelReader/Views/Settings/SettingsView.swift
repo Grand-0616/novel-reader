@@ -29,12 +29,12 @@ struct SettingsView: View {
                 Section("主题外观") {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
-                            ForEach(OmniSkin.allCases) { skin in
+                            ForEach(OmniSkin.allCases) { item in
                                 OmniChip(
-                                    title: skin.displayName,
-                                    isSelected: appState.skin == skin
+                                    title: item.displayName,
+                                    isSelected: appState.skin == item
                                 ) {
-                                    appState.skin = skin
+                                    appState.skin = item
                                 }
                             }
                         }
@@ -51,6 +51,7 @@ struct SettingsView: View {
                     } label: {
                         Label("排版设置", systemImage: "textformat.size")
                     }
+                    .listRowBackground(skin.surface)
                     TypographyPreviewCard()
                         .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                         .listRowBackground(Color.clear)
@@ -62,13 +63,13 @@ struct SettingsView: View {
                         Label("已占用空间", systemImage: "internaldrive")
                         Spacer()
                         Text(ByteCountFormatter.string(fromByteCount: diskUsage, countStyle: .file))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(skin.textSecondary)
                             .monospacedDigit()
                     }
                     HStack {
                         Label("书籍数量", systemImage: "books.vertical")
                         Spacer()
-                        Text("\(bookCount) 本").foregroundStyle(.secondary)
+                        Text("\(bookCount) 本").foregroundStyle(skin.textSecondary)
                     }
                     NavigationLink {
                         StorageDetailView(onChange: refresh)
@@ -76,25 +77,31 @@ struct SettingsView: View {
                         Label("清理缓存", systemImage: "trash")
                     }
                 }
+                .listRowBackground(skin.surface)
 
                 // MARK: 文件
                 Section {
                     HStack {
                         Label("文件收纳箱", systemImage: "tray.and.arrow.down")
                         Spacer()
-                        Text("Inbox").foregroundStyle(.secondary).font(.caption)
+                        Text("Inbox")
+                            .foregroundStyle(skin.textSecondary)
+                            .font(.caption)
                     }
                     Text("把 TXT / EPUB 拖进「文件」App → 我的 iPhone → 书虫 → Inbox，回到书架下拉即可自动导入。也可以在「文件」里长按文件 → 共享 → 书虫。")
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
-                } header: { Text("导入方式") }
+                        .foregroundStyle(skin.textSecondary)
+                } header: {
+                    Text("导入方式")
+                }
+                .listRowBackground(skin.surface)
 
                 // MARK: 书源
                 Section("书源") {
                     HStack {
                         Label("书源数量", systemImage: "network")
                         Spacer()
-                        Text("\(registry.sources.count)").foregroundStyle(.secondary)
+                        Text("\(registry.sources.count)").foregroundStyle(skin.textSecondary)
                     }
                     Button {
                         UIPasteboard.general.string = registry.exportJSON()
@@ -103,6 +110,7 @@ struct SettingsView: View {
                         Label("复制书源配置 JSON", systemImage: "doc.on.doc")
                     }
                 }
+                .listRowBackground(skin.surface)
 
                 // MARK: 关于
                 Section("关于") {
@@ -110,7 +118,7 @@ struct SettingsView: View {
                         Text("版本")
                         Spacer()
                         Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(skin.textSecondary)
                     }
                     NavigationLink {
                         AboutView()
@@ -118,12 +126,14 @@ struct SettingsView: View {
                         Label("关于与自签说明", systemImage: "info.circle")
                     }
                 }
+                .listRowBackground(skin.surface)
 
                 Section {
                     Button("重置所有缓存", role: .destructive) {
                         showResetAlert = true
                     }
                 }
+                .listRowBackground(skin.surface)
             }
             .scrollContentBackground(.hidden)
             .background(skin.background)
@@ -161,6 +171,7 @@ struct SettingsView: View {
 struct StorageDetailView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.omniSkin) private var skin
     @Query(sort: \Book.createdAt, order: .reverse) private var books: [Book]
     var onChange: () -> Void
 
@@ -170,16 +181,21 @@ struct StorageDetailView: View {
                 ForEach(books) { book in
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(book.title).font(.subheadline).lineLimit(1)
+                            Text(book.title)
+                                .font(.subheadline)
+                                .foregroundStyle(skin.textPrimary)
+                                .lineLimit(1)
                             Text("\(book.cachedChapterCount)/\(book.chapterCount) 章已缓存")
-                                .font(.caption2).foregroundStyle(.secondary)
+                                .font(.caption2)
+                                .foregroundStyle(skin.textSecondary)
                         }
                         Spacer()
                         Text(ByteCountFormatter.string(
                             fromByteCount: cacheSize(for: book), countStyle: .file))
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(skin.textSecondary)
                     }
+                    .listRowBackground(skin.surface)
                     .swipeActions {
                         Button(role: .destructive) {
                             let store = appState.store ?? Store(context: modelContext)
@@ -200,8 +216,12 @@ struct StorageDetailView: View {
                 Text("本地导入的书清掉缓存后需要重新导入；网络书源的书清掉后会在阅读时重新下载。")
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(skin.background)
         .navigationTitle("存储")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(skin.surface, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
     }
 
     private func cacheSize(for book: Book) -> Int64 {
@@ -219,13 +239,18 @@ struct StorageDetailView: View {
 // MARK: - 关于
 
 struct AboutView: View {
+    @Environment(\.omniSkin) private var skin
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("书虫").font(.largeTitle.bold())
+                    Text("书虫")
+                        .font(.largeTitle.bold())
+                        .foregroundStyle(skin.textPrimary)
                     Text("本地优先的小说阅读器 · 支持 NAS 书库")
-                        .font(.subheadline).foregroundStyle(.secondary)
+                        .font(.subheadline)
+                        .foregroundStyle(skin.textSecondary)
                 }
 
                 group("支持的格式") {
@@ -252,28 +277,35 @@ struct AboutView: View {
                 group("隐私") {
                     Text("所有书源、账号、阅读记录仅保存在本机沙盒内，不上传任何服务器。本 App 没有内建任何第三方统计或广告。")
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(skin.textSecondary)
                 }
 
                 Spacer(minLength: 20)
             }
             .padding(20)
         }
+        .background(skin.background)
         .navigationTitle("关于")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(skin.surface, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
     }
 
     private func group(_ title: String, @ViewBuilder content: () -> some View) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(title).font(.headline)
+            Text(title)
+                .font(.headline)
+                .foregroundStyle(skin.textPrimary)
             content()
         }
     }
 
     private func bullet(_ text: String) -> some View {
         HStack(alignment: .top, spacing: 8) {
-            Text("•").foregroundStyle(.secondary)
-            Text(text).font(.footnote).foregroundStyle(.secondary)
+            Text("•").foregroundStyle(skin.accent)
+            Text(text)
+                .font(.footnote)
+                .foregroundStyle(skin.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }

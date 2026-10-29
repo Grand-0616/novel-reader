@@ -75,10 +75,10 @@ struct BookDetailView: View {
                     Image(uiImage: img).resizable().aspectRatio(contentMode: .fill)
                 } else {
                     RoundedRectangle(cornerRadius: 8)
-                        .fill(Color.accentColor.opacity(0.15))
+                        .fill(skin.accent.opacity(0.15))
                     Image(systemName: "book.closed.fill")
                         .font(.system(size: 34))
-                        .foregroundStyle(Color.accentColor.opacity(0.6))
+                        .foregroundStyle(skin.accent.opacity(0.6))
                 }
             }
             .frame(width: 96, height: 132)
@@ -90,13 +90,13 @@ struct BookDetailView: View {
                     .lineLimit(3)
                 Text(book.displayAuthor)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(skin.textSecondary)
                 HStack(spacing: 6) {
                     Label(book.origin.displayName, systemImage: book.origin.symbolName)
                         .font(.caption2)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
-                        .background(Color.accentColor.opacity(0.12), in: Capsule())
+                        .background(skin.accent.opacity(0.12), in: Capsule())
                     Text(book.fileFormat.uppercased())
                         .font(.caption2)
                         .padding(.horizontal, 8)
@@ -105,7 +105,7 @@ struct BookDetailView: View {
                 }
                 Text("\(book.chapterCount) 章 · \(formattedSize)")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(skin.textSecondary)
             }
             Spacer(minLength: 0)
         }
@@ -178,22 +178,22 @@ struct BookDetailView: View {
                 Spacer()
                 Text("\(Int(book.readingProgress * 100))%")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(skin.textSecondary)
             }
             ProgressView(value: book.readingProgress)
-                .tint(Color.accentColor)
+                .tint(skin.accent)
 
             HStack {
                 Text("离线：\(book.cachedChapterCount)/\(max(book.chapterCount, 1)) 章")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(skin.textSecondary)
                 Spacer()
                 if let dl = DownloadManager.shared.task(for: book.id) {
                     switch dl.state {
                     case .running(let done, let total, let current, _):
                         Text("下载中 \(done)/\(total) \(current)")
                             .font(.caption2)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(skin.textSecondary)
                             .lineLimit(1)
                     case .finished(let n):
                         Text("已下载 \(n) 章")
@@ -202,13 +202,13 @@ struct BookDetailView: View {
                     case .failed(let m):
                         Text("失败：\(m)").font(.caption2).foregroundStyle(.red)
                     case .queued:
-                        Text("排队中…").font(.caption2).foregroundStyle(.secondary)
+                        Text("排队中…").font(.caption2).foregroundStyle(skin.textSecondary)
                     }
                 }
             }
         }
         .padding(14)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+        .background(skin.surface, in: RoundedRectangle(cornerRadius: 12))
         .padding(.horizontal, 16)
     }
 
@@ -221,12 +221,12 @@ struct BookDetailView: View {
                 Text("简介").font(.subheadline.weight(.medium))
                 Text(book.summary)
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(skin.textSecondary)
                     .lineLimit(8)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(14)
-            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+            .background(skin.surface, in: RoundedRectangle(cornerRadius: 12))
             .padding(.horizontal, 16)
         }
     }
@@ -260,7 +260,7 @@ struct BookDetailView: View {
                         if !ch.isCached && ch.remoteURL != nil {
                             Image(systemName: "icloud.and.arrow.down")
                                 .font(.caption2)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(skin.textSecondary)
                         }
                     }
                     .padding(.horizontal, 14)
@@ -271,7 +271,7 @@ struct BookDetailView: View {
                 Divider().padding(.leading, 14)
             }
         }
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+        .background(skin.surface, in: RoundedRectangle(cornerRadius: 12))
         .padding(.horizontal, 16)
         .padding(.bottom, 30)
     }
@@ -281,6 +281,7 @@ struct BookDetailView: View {
 
 struct ChapterListView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.omniSkin) private var skin
     let book: Book
     var onSelect: (Int) -> Void
 
@@ -307,25 +308,31 @@ struct ChapterListView: View {
                             HStack(spacing: 8) {
                                 Text(ch.title)
                                     .font(.subheadline)
-                                    .foregroundStyle(ch.index == book.positionChapterIndex ? Color.accentColor : .primary)
+                                    .foregroundStyle(ch.index == book.positionChapterIndex ? skin.accent : skin.textPrimary)
                                     .lineLimit(2)
                                 Spacer()
                                 if ch.index == book.positionChapterIndex {
-                                    Image(systemName: "bookmark.fill")
-                                        .font(.caption)
-                                        .foregroundStyle(Color.accentColor)
+                                    Text("当前")
+                                        .font(.system(size: 10, weight: .semibold))
+                                        .foregroundStyle(skin.background)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(Capsule().fill(skin.accent))
                                 }
                                 if !ch.isCached && ch.remoteURL != nil {
                                     Image(systemName: "icloud.and.arrow.down")
                                         .font(.caption2)
-                                        .foregroundStyle(.secondary)
+                                        .foregroundStyle(skin.textSecondary)
                                 }
                             }
                         }
+                        .listRowBackground(skin.surface)
                         .id(ch.index)
                     }
                 }
                 .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .background(skin.background)
                 .searchable(text: $query, prompt: "搜索章节")
                 .onAppear {
                     proxy.scrollTo(book.positionChapterIndex, anchor: .center)
@@ -333,6 +340,8 @@ struct ChapterListView: View {
             }
             .navigationTitle("目录")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(skin.surface, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
